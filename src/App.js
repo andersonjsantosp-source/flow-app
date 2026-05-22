@@ -38,7 +38,7 @@ function Ring({ pct, size=96 }) {
   const r = size/2-7, c = 2*Math.PI*r, off = c-(pct/100)*c;
   return (
     <svg width={size} height={size} style={{transform:'rotate(-90deg)',display:'block'}}>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--b3)" strokeWidth="6"/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--b2)" strokeWidth="6"/>
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--acc)" strokeWidth="6"
         strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round"
         style={{transition:'stroke-dashoffset .7s cubic-bezier(.34,1.56,.64,1)'}}/>
@@ -599,12 +599,12 @@ function HabStats({ habits, logs, td }) {
           {['D','S','T','Q','Q','S','S'].map((d,i)=><div key={i} className="heat-dh">{d}</div>)}
           {l28.map(d=>{
             const done=(logs[d]||[]).length, t=habits.length, ratio=t>0?done/t:0;
-            const bg=ratio===0?'var(--b1)':ratio<.34?'var(--acc-dim)':ratio<.67?'rgba(201,168,76,0.35)':ratio<1?'rgba(201,168,76,0.65)':'var(--acc)';
+            const bg=ratio===0?'#ffffff04':ratio<.34?'#00E5A015':ratio<.67?'#00E5A040':ratio<1?'#00E5A075':'#00E5A0';
             return <div key={d} className={`heat-c${d===td?' tod':''}`} style={{background:bg}} title={`${d}: ${done}/${t}`}/>;
           })}
         </div>
         <div className="heat-leg">
-          MENOS {['var(--b1)','var(--acc-dim)','rgba(201,168,76,0.35)','rgba(201,168,76,0.65)','var(--acc)'].map((c,i)=><div key={i} className="heat-sq" style={{background:c}}/>)} MAIS
+          MENOS {['#ffffff04','#00E5A015','#00E5A040','#00E5A075','#00E5A0'].map((c,i)=><div key={i} className="heat-sq" style={{background:c}}/>)} MAIS
         </div>
       </div>
       <div className="bento g2 stagger">
