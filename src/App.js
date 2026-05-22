@@ -554,14 +554,15 @@ function HabWeek({ habits, logs, td, onToggle }) {
               </div>
               {l7.map(d=>{
                 const done=(logs[d]||[]).includes(h.id),isT=d===td;
-                return <div key={d} className={`wk-cell${done?' done':''}${isT?' tod-c click':''}`}
+                return <div key={d} className={`wk-cell${done?' done':''} click${isT?' tod-c':''}`}
                   style={done?{background:h.color+'22',color:h.color}:{}}
-                  onClick={()=>isT&&onToggle(h.id,d)}>{done?'✓':''}</div>;
+                  title={done?'Clique para desmarcar':'Clique para marcar'}
+                  onClick={()=>onToggle(h.id,d)}>{done?'✓':''}</div>;
               })}
             </div>
           ))
         }
-        <div className="wk-tip">Apenas hoje é editável</div>
+        <div className="wk-tip">Clique em qualquer dia para marcar ou desmarcar</div>
       </div>
     </div>
   );
