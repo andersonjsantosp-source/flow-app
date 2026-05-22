@@ -38,8 +38,8 @@ function Ring({ pct, size=96 }) {
   const r = size/2-7, c = 2*Math.PI*r, off = c-(pct/100)*c;
   return (
     <svg width={size} height={size} style={{transform:'rotate(-90deg)',display:'block'}}>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#ffffff08" strokeWidth="6"/>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#00E5A0" strokeWidth="6"
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--b3)" strokeWidth="6"/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--acc)" strokeWidth="6"
         strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round"
         style={{transition:'stroke-dashoffset .7s cubic-bezier(.34,1.56,.64,1)'}}/>
     </svg>
@@ -80,13 +80,13 @@ function AuthPage() {
     <div className="auth-page">
       <div className="auth-box">
         <div className="auth-logo">
-          <div className="auth-mark">F</div>
-          <div className="auth-name">Flow</div>
+          <div className="auth-mark">𝔐</div>
+          <div className="auth-name">Mnemos</div>
         </div>
         <div className="auth-h">{mode==='login' ? 'Entrar' : 'Criar conta'}</div>
         <div className="auth-sub">Produtividade Pessoal</div>
         {error && <div className="auth-error">{error}</div>}
-        {msg   && <div style={{background:'var(--acc-dim)',border:'1px solid var(--acc)',borderRadius:'var(--r)',padding:'10px 14px',fontSize:'12px',color:'var(--acc)',marginBottom:'14px',fontFamily:'var(--fm)'}}>{msg}</div>}
+        {msg   && <div className="auth-success">{msg}</div>}
         <form onSubmit={submit}>
           <label className="auth-label">Email</label>
           <input className="auth-input" type="email" placeholder="seu@email.com" value={email} onChange={e=>setEmail(e.target.value)} required/>
@@ -129,6 +129,14 @@ export default function App() {
 // ─────────────────────────────────────────────────────
 function FlowApp({ session }) {
   const uid = session.user.id;
+
+  // ── Theme ────────────────────────────────────────────
+  const [theme, setTheme] = useState(() => localStorage.getItem('mnemos-theme') || 'dark');
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('mnemos-theme', theme);
+  }, [theme]);
+  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
 
   // ── Data state ──────────────────────────────────────
   const [habits,   setHabits]   = useState([]);
@@ -351,10 +359,10 @@ function FlowApp({ session }) {
       <aside className="sidebar">
         <div className="sb-brand">
           <div className="sb-logo">
-            <div className="sb-mark">F</div>
-            <div className="sb-name">Flow</div>
+            <div className="sb-mark">𝔐</div>
+            <div className="sb-name">Mnemos</div>
           </div>
-          <div className="sb-tag">PRODUTIVIDADE PESSOAL</div>
+          <div className="sb-tag">Produtividade Pessoal</div>
         </div>
         <div className="sb-scroll">
           <div className="sb-section-label">Módulos</div>
@@ -376,7 +384,12 @@ function FlowApp({ session }) {
               <b>{String(d.getDate()).padStart(2,'0')} {MO[d.getMonth()]} {d.getFullYear()}</b><br/>
               {DAYS[d.getDay()].toUpperCase()}
             </div>
-            <button className="sb-signout" onClick={()=>supabase.auth.signOut()}>SAIR</button>
+            <div className="sb-foot-actions">
+              <button className="theme-toggle" onClick={toggleTheme} title={theme==='dark'?'Modo claro':'Modo escuro'}>
+                {theme==='dark' ? '☀' : '☾'}
+              </button>
+              <button className="sb-signout" onClick={()=>supabase.auth.signOut()}>SAIR</button>
+            </div>
           </div>
         </div>
       </aside>
@@ -432,6 +445,10 @@ function FlowApp({ session }) {
             <span className="bnav-ico">{ico}</span><span>{label}</span><div className="bnav-pip"/>
           </button>
         ))}
+        <button onClick={toggleTheme} style={{maxWidth:60}}>
+          <span className="bnav-ico">{theme==='dark'?'☀':'☾'}</span>
+          <span>{theme==='dark'?'CLARO':'ESCURO'}</span>
+        </button>
       </nav>
 
       {/* ── TASK MODAL ── */}
@@ -582,12 +599,12 @@ function HabStats({ habits, logs, td }) {
           {['D','S','T','Q','Q','S','S'].map((d,i)=><div key={i} className="heat-dh">{d}</div>)}
           {l28.map(d=>{
             const done=(logs[d]||[]).length, t=habits.length, ratio=t>0?done/t:0;
-            const bg=ratio===0?'#ffffff04':ratio<.34?'#00E5A015':ratio<.67?'#00E5A040':ratio<1?'#00E5A075':'#00E5A0';
+            const bg=ratio===0?'var(--b1)':ratio<.34?'var(--acc-dim)':ratio<.67?'rgba(201,168,76,0.35)':ratio<1?'rgba(201,168,76,0.65)':'var(--acc)';
             return <div key={d} className={`heat-c${d===td?' tod':''}`} style={{background:bg}} title={`${d}: ${done}/${t}`}/>;
           })}
         </div>
         <div className="heat-leg">
-          MENOS {['#ffffff04','#00E5A015','#00E5A040','#00E5A075','#00E5A0'].map((c,i)=><div key={i} className="heat-sq" style={{background:c}}/>)} MAIS
+          MENOS {['var(--b1)','var(--acc-dim)','rgba(201,168,76,0.35)','rgba(201,168,76,0.65)','var(--acc)'].map((c,i)=><div key={i} className="heat-sq" style={{background:c}}/>)} MAIS
         </div>
       </div>
       <div className="bento g2 stagger">
