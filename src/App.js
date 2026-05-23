@@ -2,31 +2,31 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
 import { supabase } from './supabase';
 
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // CONSTANTS
-// ─────────────────────────────────────────────────────
-const DAYS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const DAYS = ['Dom','Seg','Ter','Qua','Qui','Sex','SÃ¡b'];
 const MO   = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
 const ICON_CATEGORIES = [
-  { label: 'Saúde & Corpo', icons: ['🏃','💪','🧘','🚶','🏋️','🤸','🚴','🏊','🧗','⛹️','🤾','🏄','🥊','🤼','🎽','🦵','🦷','😴','🛌','💊','🩺','🩹','❤️','🫀','🫁','🧬','🩻','💉','🧪'] },
-  { label: 'Alimentação', icons: ['🥗','🥦','🍎','🥑','🍳','🥩','🐟','🥕','🌽','🧄','🫐','🍇','🍓','🍊','🍋','🥝','🍵','💧','🥤','🧃','☕','🫖','🥛','🍫','🚫🍔'] },
-  { label: 'Mente & Foco', icons: ['🧠','📚','✍️','📖','🎯','📝','💡','🔬','🎓','📐','🗂️','📊','💭','🤔','🧩','♟️','🔭','📡','🗺️','🌐'] },
-  { label: 'Criatividade', icons: ['🎨','🎵','🎸','🎹','🎺','🎻','🥁','🎙️','🎤','🖌️','✏️','📷','🎬','🎭','🎪','🪄','🎲','🧶','🪡','🏺'] },
-  { label: 'Rotina & Casa', icons: ['🧹','🧺','🛁','🪥','🧴','🪞','⏰','📅','🗓️','📋','✅','🔑','🏠','🌱','🌿','💐','🪴','🕯️','🧘'] },
-  { label: 'Dinheiro & Trabalho', icons: ['💰','💳','📈','📉','💼','🖥️','⌨️','🖱️','📱','📞','📧','🗒️','📌','📎','🔗','🏦','💹','🪙','💎','🤝'] },
-  { label: 'Bem-estar Mental', icons: ['😊','🙏','🧘','💆','🌅','🌄','🌙','⭐','✨','🌈','🕊️','🫶','❤️‍🔥','💚','🌻','🌸','🍃','🌊','🏔️','🌴'] },
-  { label: 'Desafios', icons: ['🚭','🚫','⛔','🔥','🏆','🥇','🎖️','🏅','🎯','💯','⚡','🌟','💥','🚀','🛡️','⚔️','🗡️','🎪','🤺','🥋'] },
+  { label: 'SaÃºde & Corpo', icons: ['ðŸƒ','ðŸ’ª','ðŸ§˜','ðŸš¶','ðŸ‹ï¸','ðŸ¤¸','ðŸš´','ðŸŠ','ðŸ§—','â›¹ï¸','ðŸ¤¾','ðŸ„','ðŸ¥Š','ðŸ¤¼','ðŸŽ½','ðŸ¦µ','ðŸ¦·','ðŸ˜´','ðŸ›Œ','ðŸ’Š','ðŸ©º','ðŸ©¹','â¤ï¸','ðŸ«€','ðŸ«','ðŸ§¬','ðŸ©»','ðŸ’‰','ðŸ§ª'] },
+  { label: 'AlimentaÃ§Ã£o', icons: ['ðŸ¥—','ðŸ¥¦','ðŸŽ','ðŸ¥‘','ðŸ³','ðŸ¥©','ðŸŸ','ðŸ¥•','ðŸŒ½','ðŸ§„','ðŸ«','ðŸ‡','ðŸ“','ðŸŠ','ðŸ‹','ðŸ¥','ðŸµ','ðŸ’§','ðŸ¥¤','ðŸ§ƒ','â˜•','ðŸ«–','ðŸ¥›','ðŸ«','ðŸš«ðŸ”'] },
+  { label: 'Mente & Foco', icons: ['ðŸ§ ','ðŸ“š','âœï¸','ðŸ“–','ðŸŽ¯','ðŸ“','ðŸ’¡','ðŸ”¬','ðŸŽ“','ðŸ“','ðŸ—‚ï¸','ðŸ“Š','ðŸ’­','ðŸ¤”','ðŸ§©','â™Ÿï¸','ðŸ”­','ðŸ“¡','ðŸ—ºï¸','ðŸŒ'] },
+  { label: 'Criatividade', icons: ['ðŸŽ¨','ðŸŽµ','ðŸŽ¸','ðŸŽ¹','ðŸŽº','ðŸŽ»','ðŸ¥','ðŸŽ™ï¸','ðŸŽ¤','ðŸ–Œï¸','âœï¸','ðŸ“·','ðŸŽ¬','ðŸŽ­','ðŸŽª','ðŸª„','ðŸŽ²','ðŸ§¶','ðŸª¡','ðŸº'] },
+  { label: 'Rotina & Casa', icons: ['ðŸ§¹','ðŸ§º','ðŸ›','ðŸª¥','ðŸ§´','ðŸªž','â°','ðŸ“…','ðŸ—“ï¸','ðŸ“‹','âœ…','ðŸ”‘','ðŸ ','ðŸŒ±','ðŸŒ¿','ðŸ’','ðŸª´','ðŸ•¯ï¸','ðŸ§˜'] },
+  { label: 'Dinheiro & Trabalho', icons: ['ðŸ’°','ðŸ’³','ðŸ“ˆ','ðŸ“‰','ðŸ’¼','ðŸ–¥ï¸','âŒ¨ï¸','ðŸ–±ï¸','ðŸ“±','ðŸ“ž','ðŸ“§','ðŸ—’ï¸','ðŸ“Œ','ðŸ“Ž','ðŸ”—','ðŸ¦','ðŸ’¹','ðŸª™','ðŸ’Ž','ðŸ¤'] },
+  { label: 'Bem-estar Mental', icons: ['ðŸ˜Š','ðŸ™','ðŸ§˜','ðŸ’†','ðŸŒ…','ðŸŒ„','ðŸŒ™','â­','âœ¨','ðŸŒˆ','ðŸ•Šï¸','ðŸ«¶','â¤ï¸â€ðŸ”¥','ðŸ’š','ðŸŒ»','ðŸŒ¸','ðŸƒ','ðŸŒŠ','ðŸ”ï¸','ðŸŒ´'] },
+  { label: 'Desafios', icons: ['ðŸš­','ðŸš«','â›”','ðŸ”¥','ðŸ†','ðŸ¥‡','ðŸŽ–ï¸','ðŸ…','ðŸŽ¯','ðŸ’¯','âš¡','ðŸŒŸ','ðŸ’¥','ðŸš€','ðŸ›¡ï¸','âš”ï¸','ðŸ—¡ï¸','ðŸŽª','ðŸ¤º','ðŸ¥‹'] },
 ];
 const ALL_ICONS = ICON_CATEGORIES.flatMap(c => c.icons);
 const HICONS = ALL_ICONS; // backward compat
 const HCOLS  = ['#00E5A0','#4488FF','#FF4466','#FFB800','#AA66FF','#FF8844','#44DDFF','#FF44AA','#88FF44','#FFAA00','#44AAFF','#FF6644','#66FF88','#AA44FF','#FFD044'];
 const PALETTE = ['#00E5A0','#4488FF','#FF4466','#FFB800','#AA66FF','#FF8844','#44DDFF','#FF44BB','#66FF44','#FF6644','#44BBFF','#FFD044','#FF4488','#88FF66','#44FFCC'];
-const DEFAULT_COLS = [{label:'Backlog',color:'#44445A',position:0},{label:'A Fazer',color:'#4488FF',position:1},{label:'Em Progresso',color:'#FFB800',position:2},{label:'Concluído',color:'#00E5A0',position:3}];
-const DEFAULT_TAGS = [{label:'Design',color:'#4488FF'},{label:'Dev',color:'#AA66FF'},{label:'Produto',color:'#00E5A0'},{label:'Pessoal',color:'#FF8844'},{label:'Financeiro',color:'#FFB800'},{label:'Saúde',color:'#FF4466'}];
+const DEFAULT_COLS = [{label:'Backlog',color:'#44445A',position:0},{label:'A Fazer',color:'#4488FF',position:1},{label:'Em Progresso',color:'#FFB800',position:2},{label:'ConcluÃ­do',color:'#00E5A0',position:3}];
+const DEFAULT_TAGS = [{label:'Design',color:'#4488FF'},{label:'Dev',color:'#AA66FF'},{label:'Produto',color:'#00E5A0'},{label:'Pessoal',color:'#FF8844'},{label:'Financeiro',color:'#FFB800'},{label:'SaÃºde',color:'#FF4466'}];
 
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // DATE HELPERS
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const toK = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const todayKey = () => toK(new Date());
 const lastN = n => Array.from({length:n},(_,i) => { const d=new Date(); d.setDate(d.getDate()-(n-1-i)); return toK(d); });
@@ -46,9 +46,9 @@ const renderIcon = (icon, size=19) => {
   return icon;
 };
 
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // SVG RING
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Ring({ pct, size=96 }) {
   const r = size/2-7, c = 2*Math.PI*r, off = c-(pct/100)*c;
   return (
@@ -61,9 +61,9 @@ function Ring({ pct, size=96 }) {
   );
 }
 
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // AUTH PAGE
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function AuthPage() {
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
@@ -106,7 +106,7 @@ function AuthPage() {
           <label className="auth-label">Email</label>
           <input className="auth-input" type="email" placeholder="seu@email.com" value={email} onChange={e=>setEmail(e.target.value)} required/>
           <label className="auth-label">Senha</label>
-          <input className="auth-input" type="password" placeholder="••••••••" value={pw} onChange={e=>setPw(e.target.value)} required minLength={6}/>
+          <input className="auth-input" type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" value={pw} onChange={e=>setPw(e.target.value)} required minLength={6}/>
           <button className="auth-btn" disabled={loading}>{loading ? 'Aguarde...' : mode==='login' ? 'ENTRAR' : 'CRIAR CONTA'}</button>
         </form>
         <div className="auth-divider">OU</div>
@@ -115,16 +115,16 @@ function AuthPage() {
           Continuar com Google
         </button>
         <div className="auth-toggle">
-          {mode==='login' ? <>Não tem conta?<button onClick={()=>{setMode('signup');setError('');}}>Criar conta</button></> : <>Já tem conta?<button onClick={()=>{setMode('login');setError('');}}>Entrar</button></>}
+          {mode==='login' ? <>NÃ£o tem conta?<button onClick={()=>{setMode('signup');setError('');}}>Criar conta</button></> : <>JÃ¡ tem conta?<button onClick={()=>{setMode('login');setError('');}}>Entrar</button></>}
         </div>
       </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // MAIN APP
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function App() {
   const [session, setSession] = useState(undefined);
 
@@ -139,13 +139,13 @@ export default function App() {
   return <FlowApp session={session} />;
 }
 
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // FLOW APP (authenticated)
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function FlowApp({ session }) {
   const uid = session.user.id;
 
-  // ── Theme ────────────────────────────────────────────
+  // â”€â”€ Theme â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [theme, setTheme] = useState(() => localStorage.getItem('mnemos-theme') || 'dark');
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -153,7 +153,7 @@ function FlowApp({ session }) {
   }, [theme]);
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
 
-  // ── Data state ──────────────────────────────────────
+  // â”€â”€ Data state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [habits,   setHabits]   = useState([]);
   const [logs,     setLogs]     = useState({});   // { dateKey: [habitId, ...] }
   const [kbCols,   setKbCols]   = useState([]);
@@ -165,13 +165,13 @@ function FlowApp({ session }) {
   const [rLogs,    setRLogs]    = useState({});  // { dateKey: [blockId,...] }
   const [dataReady, setDataReady] = useState(false);
 
-  // ── UI state ────────────────────────────────────────
+  // â”€â”€ UI state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [page,     setPage]     = useState('habits');
   const [habTab,   setHabTab]   = useState('today');
   const [showAddHabit, setShowAddHabit] = useState(false);
   const [editHabitId,  setEditHabitId]  = useState(null);
   const [nHName,   setNHName]   = useState('');
-  const [nHIcon,   setNHIcon]   = useState('🌅');
+  const [nHIcon,   setNHIcon]   = useState('ðŸŒ…');
   const [nHColor,  setNHColor]  = useState('#00E5A0');
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [editTaskId,    setEditTaskId]    = useState(null);
@@ -189,7 +189,7 @@ function FlowApp({ session }) {
   const [saving, setSaving] = useState(false);
   const dragId = useRef(null);
 
-  // ── Load all data ────────────────────────────────────
+  // â”€â”€ Load all data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     async function load() {
       const [hRes, lRes, cRes, tgRes, tkRes, jRes, rtRes, rbRes, rlRes] = await Promise.all([
@@ -249,7 +249,7 @@ function FlowApp({ session }) {
     load();
   }, [uid]);
 
-  // ── Notification permission ──────────────────────────
+  // â”€â”€ Notification permission â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
   }, []);
@@ -257,11 +257,11 @@ function FlowApp({ session }) {
   function scheduleNotif(title, isoTime) {
     const ms = new Date(isoTime) - Date.now();
     if (ms <= 0 || !('Notification' in window)) return;
-    const fire = () => new Notification('⏰ Lembrete Flow', { body: title });
+    const fire = () => new Notification('â° Lembrete Flow', { body: title });
     if (Notification.permission === 'granted') setTimeout(fire, ms);
   }
 
-  // ── HABIT ACTIONS ────────────────────────────────────
+  // â”€â”€ HABIT ACTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const toggleHabit = useCallback(async (habitId, dateK) => {
     const dk = dateK || todayKey();
     const existing = (logs[dk] || []).includes(habitId);
@@ -284,7 +284,7 @@ function FlowApp({ session }) {
     setSaving(true);
     const { data } = await supabase.from('habits').insert({ user_id: uid, name: nHName.trim(), icon: nHIcon, color: nHColor }).select().single();
     if (data) setHabits(prev => [...prev, data]);
-    setNHName(''); setNHIcon('🌅'); setNHColor('#00E5A0'); setShowAddHabit(false);
+    setNHName(''); setNHIcon('ðŸŒ…'); setNHColor('#00E5A0'); setShowAddHabit(false);
     setSaving(false);
   }, [nHName, nHIcon, nHColor, uid]);
 
@@ -294,7 +294,7 @@ function FlowApp({ session }) {
     await supabase.from('habits').delete().eq('id', id);
   }, []);
 
-  // ── TASK ACTIONS ─────────────────────────────────────
+  // â”€â”€ TASK ACTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const openNewTask = (colId) => {
     setEditTaskId(null); setTTitle(''); setTDesc('');
     setTCol(colId || (kbCols[0]?.id || '')); setTTags([]); setTReminder('');
@@ -334,7 +334,7 @@ function FlowApp({ session }) {
     await supabase.from('tasks').update({ col_id: colId }).eq('id', id);
   }, []);
 
-  // ── COLUMN ACTIONS ───────────────────────────────────
+  // â”€â”€ COLUMN ACTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const addCol = useCallback(async () => {
     if (!newColName.trim()) return;
     const pos = kbCols.length;
@@ -344,7 +344,7 @@ function FlowApp({ session }) {
   }, [newColName, newColColor, kbCols, uid]);
 
   const deleteCol = useCallback(async id => {
-    if (kbCols.length <= 1) { alert('É necessário ao menos uma coluna.'); return; }
+    if (kbCols.length <= 1) { alert('Ã‰ necessÃ¡rio ao menos uma coluna.'); return; }
     const fallback = kbCols.find(c => c.id !== id)?.id || '';
     const newCols = kbCols.filter(c => c.id !== id);
     setKbCols(newCols);
@@ -376,7 +376,7 @@ function FlowApp({ session }) {
     }
   }, [kbCols]);
 
-  // ── TAG ACTIONS ──────────────────────────────────────
+  // â”€â”€ TAG ACTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const addTag = useCallback(async () => {
     if (!newTagName.trim()) return;
     const { data } = await supabase.from('kb_tags').insert({ user_id: uid, label: newTagName.trim(), color: newTagColor }).select().single();
@@ -399,7 +399,7 @@ function FlowApp({ session }) {
     await supabase.from('kb_tags').update(patch).eq('id', id);
   }, []);
 
-  // ── ROUTINE ACTIONS ──────────────────────────────────
+  // â”€â”€ ROUTINE ACTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const addRoutine = useCallback(async (name, color, days) => {
     const pos = routines.length;
     const { data } = await supabase.from('routines').insert({ user_id: uid, name, color, days, position: pos }).select().single();
@@ -452,7 +452,7 @@ function FlowApp({ session }) {
     }
   }, [rLogs, uid]);
 
-  // ── JOURNAL ACTIONS ──────────────────────────────────
+  // â”€â”€ JOURNAL ACTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const saveEntry = useCallback(async (entryData) => {
     const base = { title: entryData.title, body: entryData.body, mood: entryData.mood, tags: entryData.tags };
     const withImg = { ...base, image_url: entryData.image_url };
@@ -485,7 +485,7 @@ function FlowApp({ session }) {
 
   return (
     <div className="app">
-      {/* ── SIDEBAR ── */}
+      {/* â”€â”€ SIDEBAR â”€â”€ */}
       <aside className="sidebar">
         <div className="sb-brand">
           <div className="sb-logo">
@@ -495,12 +495,12 @@ function FlowApp({ session }) {
           <div className="sb-tag">Produtividade Pessoal</div>
         </div>
         <div className="sb-scroll">
-          <div className="sb-section-label">Módulos</div>
+          <div className="sb-section-label">MÃ³dulos</div>
           {[
-            {id:'habits',  ico:'◎', label:'Hábitos', badge:`${doneH}/${habits.length}`},
-            {id:'kanban',  ico:'⊞', label:'Kanban',  badge:`${tasks.length} tarefas`},
-            {id:'journal', ico:'✦', label:'Diário',  badge:`${entries.length} entradas`},
-            {id:'routine', ico:'◷', label:'Rotina',  badge:`${routines.length} rotinas`},
+            {id:'habits',  ico:'â—Ž', label:'HÃ¡bitos', badge:`${doneH}/${habits.length}`},
+            {id:'kanban',  ico:'âŠž', label:'Kanban',  badge:`${tasks.length} tarefas`},
+            {id:'journal', ico:'âœ¦', label:'DiÃ¡rio',  badge:`${entries.length} entradas`},
+            {id:'routine', ico:'â—·', label:'Rotina',  badge:`${routines.length} rotinas`},
           ].map(({id,ico,label,badge}) => (
             <button key={id} className={`sb-item ${page===id?'active':''}`} onClick={()=>setPage(id)}>
               <div className="sb-item-bar"/>
@@ -518,7 +518,7 @@ function FlowApp({ session }) {
             </div>
             <div className="sb-foot-actions">
               <button className="theme-toggle" onClick={toggleTheme} title={theme==='dark'?'Modo claro':'Modo escuro'}>
-                {theme==='dark' ? '☀' : '☾'}
+                {theme==='dark' ? 'â˜€' : 'â˜¾'}
               </button>
               <button className="sb-signout" onClick={()=>supabase.auth.signOut()}>SAIR</button>
             </div>
@@ -526,24 +526,24 @@ function FlowApp({ session }) {
         </div>
       </aside>
 
-      {/* ── MAIN ── */}
+      {/* â”€â”€ MAIN â”€â”€ */}
       <div className="main">
         <div className="mod-header">
           <div className="mod-eyebrow fade">
-            {page==='habits' ? {today:'ACOMPANHAMENTO DIÁRIO',week:'VISÃO 7 DIAS',stats:'ANÁLISE DE DESEMPENHO',manage:'GERENCIAMENTO'}[habTab]
-            : page==='kanban'  ? 'GESTÃO DE TAREFAS'
-            : page==='journal' ? 'REFLEXÕES & ANOTAÇÕES'
+            {page==='habits' ? {today:'ACOMPANHAMENTO DIÃRIO',week:'VISÃƒO 7 DIAS',stats:'ANÃLISE DE DESEMPENHO',manage:'GERENCIAMENTO'}[habTab]
+            : page==='kanban'  ? 'GESTÃƒO DE TAREFAS'
+            : page==='journal' ? 'REFLEXÃ•ES & ANOTAÃ‡Ã•ES'
             : 'PLANEJAMENTO DO DIA'}
           </div>
           <div className="mod-title fade" dangerouslySetInnerHTML={{__html:
-            page==='habits' ? {today:'Hábitos <span class="hi">de Hoje</span>',week:'Visão <span class="hi">Semanal</span>',stats:'Análise <span class="hi">de Dados</span>',manage:'Meus <span class="hi">Hábitos</span>'}[habTab]
+            page==='habits' ? {today:'HÃ¡bitos <span class="hi">de Hoje</span>',week:'VisÃ£o <span class="hi">Semanal</span>',stats:'AnÃ¡lise <span class="hi">de Dados</span>',manage:'Meus <span class="hi">HÃ¡bitos</span>'}[habTab]
             : page==='kanban'  ? 'Quadro <span class="hi">Kanban</span>'
-            : page==='journal' ? 'Meu <span class="hi">Diário</span>'
+            : page==='journal' ? 'Meu <span class="hi">DiÃ¡rio</span>'
             : 'Minha <span class="hi">Rotina</span>'
           }}/>
           {page==='habits' && (
             <div className="sub-tabs">
-              {[{id:'today',label:'Hoje'},{id:'week',label:'Semana'},{id:'stats',label:'Stats'},{id:'manage',label:'Hábitos'}].map(({id,label}) => (
+              {[{id:'today',label:'Hoje'},{id:'week',label:'Semana'},{id:'stats',label:'Stats'},{id:'manage',label:'HÃ¡bitos'}].map(({id,label}) => (
                 <button key={id} className={`sub-tab ${habTab===id?'active':''}`} onClick={()=>{setHabTab(id);setShowAddHabit(false);setEditHabitId(null);}}>{label}</button>
               ))}
             </div>
@@ -586,20 +586,20 @@ function FlowApp({ session }) {
         </div>
       </div>
 
-      {/* ── BOTTOM NAV ── */}
+      {/* â”€â”€ BOTTOM NAV â”€â”€ */}
       <nav className="bnav">
-        {[{ico:'◎',label:'HÁBITOS',id:'habits'},{ico:'⊞',label:'KANBAN',id:'kanban'},{ico:'✦',label:'DIÁRIO',id:'journal'},{ico:'◷',label:'ROTINA',id:'routine'}].map(({ico,label,id})=>(
+        {[{ico:'â—Ž',label:'HÃBITOS',id:'habits'},{ico:'âŠž',label:'KANBAN',id:'kanban'},{ico:'âœ¦',label:'DIÃRIO',id:'journal'},{ico:'â—·',label:'ROTINA',id:'routine'}].map(({ico,label,id})=>(
           <button key={id} className={page===id?'active':''} onClick={()=>setPage(id)}>
             <span className="bnav-ico">{ico}</span><span>{label}</span><div className="bnav-pip"/>
           </button>
         ))}
         <button onClick={toggleTheme} style={{maxWidth:52}}>
-          <span className="bnav-ico">{theme==='dark'?'☀':'☾'}</span>
+          <span className="bnav-ico">{theme==='dark'?'â˜€':'â˜¾'}</span>
           <span>{theme==='dark'?'CLARO':'ESC'}</span>
         </button>
       </nav>
 
-      {/* ── TASK MODAL ── */}
+      {/* â”€â”€ TASK MODAL â”€â”€ */}
       {showTaskModal && (
         <TaskModal
           editId={editTaskId} kbCols={kbCols} kbTags={kbTags}
@@ -613,7 +613,7 @@ function FlowApp({ session }) {
         />
       )}
 
-      {/* ── SETTINGS MODAL ── */}
+      {/* â”€â”€ SETTINGS MODAL â”€â”€ */}
       {showSettings && (
         <SettingsModal
           kbCols={kbCols} kbTags={kbTags}
@@ -631,14 +631,14 @@ function FlowApp({ session }) {
   );
 }
 
-// ─────────────────────────────────────────────────────
-// HABITS — TODAY
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// HABITS â€” TODAY
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function HabToday({ habits, logs, td, onToggle }) {
   const l7 = lastN(7);
   const done = (logs[td]||[]).length, tot = habits.length;
   const pct = tot>0 ? Math.round(done/tot*100) : 0;
-  const msgs = [[100,'Máxima eficiência. Dia concluído.'],[75,'Ritmo forte. Não pare agora.'],[50,'Metade feita. Continue o momentum.'],[1,'O dia começa com uma ação.'],[0,'Defina seus hábitos para começar.']];
+  const msgs = [[100,'MÃ¡xima eficiÃªncia. Dia concluÃ­do.'],[75,'Ritmo forte. NÃ£o pare agora.'],[50,'Metade feita. Continue o momentum.'],[1,'O dia comeÃ§a com uma aÃ§Ã£o.'],[0,'Defina seus hÃ¡bitos para comeÃ§ar.']];
   const msg = msgs.find(([t])=>pct>=t)[1];
   const wd = l7.filter(d=>(logs[d]||[]).length===tot&&tot>0).length;
   return (
@@ -658,12 +658,12 @@ function HabToday({ habits, logs, td, onToggle }) {
           <div className="chip-row">
             <div className="chip"><div className="cdot" style={{background:'#00E5A0'}}/>{pct}% hoje</div>
             <div className="chip"><div className="cdot" style={{background:'#FFB800'}}/>{wd}/7 dias perfeitos</div>
-            <div className="chip"><div className="cdot" style={{background:'#4488FF'}}/>{tot} hábito{tot!==1?'s':''}</div>
+            <div className="chip"><div className="cdot" style={{background:'#4488FF'}}/>{tot} hÃ¡bito{tot!==1?'s':''}</div>
           </div>
         </div>
       </div>
       {!habits.length ? (
-        <div className="empty fade"><div className="empty-ico">✦</div><div className="empty-h">Nenhum hábito definido</div><div className="empty-s">Vá em "Hábitos" para configurar</div></div>
+        <div className="empty fade"><div className="empty-ico">âœ¦</div><div className="empty-h">Nenhum hÃ¡bito definido</div><div className="empty-s">VÃ¡ em "HÃ¡bitos" para configurar</div></div>
       ) : (
         <div className="bento g2 stagger">
           {habits.map(h => {
@@ -676,12 +676,12 @@ function HabToday({ habits, logs, td, onToggle }) {
                   <div className="hab-body">
                     <div className="hab-name">{h.name}</div>
                     <div className="hab-meta">
-                      {s>0 ? <><div className="s-badge">{s}d 🔥</div>{s} dia{s!==1?'s':''}</> : '— iniciar hoje'}
+                      {s>0 ? <><div className="s-badge">{s}d ðŸ”¥</div>{s} dia{s!==1?'s':''}</> : 'â€” iniciar hoje'}
                     </div>
                   </div>
                   <button className={`chk${isDone?' done':''}`} onClick={()=>onToggle(h.id)}
                     style={isDone?{background:h.color,borderColor:h.color,color:'#000'}:{}}>
-                    {isDone?'✓':''}
+                    {isDone?'âœ“':''}
                   </button>
                 </div>
               </div>
@@ -693,9 +693,9 @@ function HabToday({ habits, logs, td, onToggle }) {
   );
 }
 
-// ─────────────────────────────────────────────────────
-// HABITS — WEEK
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// HABITS â€” WEEK
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function HabWeek({ habits, logs, td, onToggle }) {
   const l7 = lastN(7);
   return (
@@ -710,7 +710,7 @@ function HabWeek({ habits, logs, td, onToggle }) {
             </div>
           ))}
         </div>
-        {!habits.length ? <div className="empty"><div className="empty-ico">◈</div><div className="empty-h">Sem hábitos</div></div> :
+        {!habits.length ? <div className="empty"><div className="empty-ico">â—ˆ</div><div className="empty-h">Sem hÃ¡bitos</div></div> :
           habits.map(h=>(
             <div key={h.id} className="wk-row">
               <div className="wk-lbl">
@@ -722,7 +722,7 @@ function HabWeek({ habits, logs, td, onToggle }) {
                 return <div key={d} className={`wk-cell${done?' done':''} click${isT?' tod-c':''}`}
                   style={done?{background:h.color+'22',color:h.color}:{}}
                   title={done?'Clique para desmarcar':'Clique para marcar'}
-                  onClick={()=>onToggle(h.id,d)}>{done?'✓':''}</div>;
+                  onClick={()=>onToggle(h.id,d)}>{done?'âœ“':''}</div>;
               })}
             </div>
           ))
@@ -733,16 +733,16 @@ function HabWeek({ habits, logs, td, onToggle }) {
   );
 }
 
-// ─────────────────────────────────────────────────────
-// HABITS — STATS
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// HABITS â€” STATS
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function HabStats({ habits, logs, td }) {
   const l7=lastN(7), l28=lastN(28);
-  if (!habits.length) return <div className="empty"><div className="empty-ico">◈</div><div className="empty-h">Sem dados ainda</div><div className="empty-s">Adicione hábitos para ver stats</div></div>;
+  if (!habits.length) return <div className="empty"><div className="empty-ico">â—ˆ</div><div className="empty-h">Sem dados ainda</div><div className="empty-s">Adicione hÃ¡bitos para ver stats</div></div>;
   return (
     <div>
       <div className="heat-box fade">
-        <div className="heat-ttl">ATIVIDADE — 28 DIAS</div>
+        <div className="heat-ttl">ATIVIDADE â€” 28 DIAS</div>
         <div className="heat-grid">
           {['D','S','T','Q','Q','S','S'].map((d,i)=><div key={i} className="heat-dh">{d}</div>)}
           {l28.map(d=>{
@@ -765,7 +765,7 @@ function HabStats({ habits, logs, td }) {
                 <div className="stat-hname">{h.name}</div>
               </div>
               <div className="stat-nums">
-                {[{l:'SEQUÊNCIA',v:s+'🔥',c:h.color},{l:'SEMANA',v:`${w7}/7`,c:'#4488FF'},{l:'TOTAL',v:t,c:'#AA66FF'}].map(({l,v,c})=>(
+                {[{l:'SEQUÃŠNCIA',v:s+'ðŸ”¥',c:h.color},{l:'SEMANA',v:`${w7}/7`,c:'#4488FF'},{l:'TOTAL',v:t,c:'#AA66FF'}].map(({l,v,c})=>(
                   <div key={l} className="stat-n"><div className="stat-v" style={{color:c}}>{v}</div><div className="stat-l">{l}</div></div>
                 ))}
               </div>
@@ -777,9 +777,9 @@ function HabStats({ habits, logs, td }) {
   );
 }
 
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // ICON PICKER
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function IconPicker({ value, onChange }) {
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('Todos');
@@ -808,13 +808,13 @@ function IconPicker({ value, onChange }) {
       <div className="icon-picker-top">
         <input
           className="icon-search"
-          placeholder="🔍  Buscar ícone..."
+          placeholder="ðŸ”  Buscar Ã­cone..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
         <label className="icon-upload-btn" title="Fazer upload de imagem">
           <input type="file" accept="image/*" style={{display:'none'}} onChange={handleUpload}/>
-          📁 Upload
+          ðŸ“ Upload
         </label>
       </div>
 
@@ -834,9 +834,9 @@ function IconPicker({ value, onChange }) {
       {/* Custom image preview */}
       {isCustom && (
         <div className="icon-custom-preview">
-          <img src={value} alt="ícone personalizado" className="icon-custom-img"/>
-          <span className="icon-custom-label">Ícone personalizado</span>
-          <button className="icon-custom-remove" onClick={() => onChange('🌅')}>✕</button>
+          <img src={value} alt="Ã­cone personalizado" className="icon-custom-img"/>
+          <span className="icon-custom-label">Ãcone personalizado</span>
+          <button className="icon-custom-remove" onClick={() => onChange('ðŸŒ…')}>âœ•</button>
         </div>
       )}
 
@@ -852,7 +852,7 @@ function IconPicker({ value, onChange }) {
           ))}
           {filtered.length === 0 && (
             <div style={{gridColumn:'1/-1',textAlign:'center',padding:'24px 0',color:'var(--t3)',fontFamily:'var(--fm)',fontSize:'11px',letterSpacing:'.1em'}}>
-              NENHUM ÍCONE ENCONTRADO
+              NENHUM ÃCONE ENCONTRADO
             </div>
           )}
         </div>
@@ -861,9 +861,9 @@ function IconPicker({ value, onChange }) {
   );
 }
 
-// ─────────────────────────────────────────────────────
-// HABITS — MANAGE
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// HABITS â€” MANAGE
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function HabManage({ habits, logs, editId, setEditId, onDelete, showAdd, setShowAdd, nHName, setNHName, nHIcon, setNHIcon, nHColor, setNHColor, onAdd, saving }) {
   const renderIcon = (icon) => {
     if (icon?.startsWith('data:')) return <img src={icon} alt="" style={{width:20,height:20,borderRadius:4,objectFit:'cover'}}/>;
@@ -879,28 +879,28 @@ function HabManage({ habits, logs, editId, setEditId, onDelete, showAdd, setShow
             <div className="mgr-ico">{renderIcon(h.icon)}</div>
             <div className="mgr-body">
               <div className="mgr-name">{h.name}</div>
-              <div className="mgr-sub">{s} dia{s!==1?'s':''} seguidos · {t} total</div>
+              <div className="mgr-sub">{s} dia{s!==1?'s':''} seguidos Â· {t} total</div>
             </div>
             {isE ? <>
               <button className="btn-xc" onClick={()=>setEditId(null)}>CANCELAR</button>
               <button className="btn-del" onClick={()=>onDelete(h.id)}>EXCLUIR</button>
-            </> : <button className="btn-dots" onClick={()=>setEditId(isE?null:h.id)}>···</button>}
+            </> : <button className="btn-dots" onClick={()=>setEditId(isE?null:h.id)}>Â·Â·Â·</button>}
           </div>
         );
       })}
       {!showAdd ? (
-        <button className="btn-add-new" onClick={()=>setShowAdd(true)}>+ NOVO HÁBITO</button>
+        <button className="btn-add-new" onClick={()=>setShowAdd(true)}>+ NOVO HÃBITO</button>
       ) : (
         <div className="add-form fade">
-          <div className="add-form-h"><div className="acc-dot"/>Novo Hábito</div>
+          <div className="add-form-h"><div className="acc-dot"/>Novo HÃ¡bito</div>
           <label className="flabel">NOME</label>
           <input className="finput" placeholder="Ex: Meditar 10 minutos..." value={nHName} onChange={e=>setNHName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&onAdd()} autoFocus/>
-          <label className="flabel">ÍCONE</label>
+          <label className="flabel">ÃCONE</label>
           <IconPicker value={nHIcon} onChange={setNHIcon}/>
           <label className="flabel" style={{marginTop:16}}>COR</label>
           <div className="col-grid">{HCOLS.map(c=><button key={c} className={`col-btn${nHColor===c?' sel':''}`} style={{background:c}} onClick={()=>setNHColor(c)}/>)}</div>
           <div className="form-btns">
-            <button className="btn-save" onClick={onAdd} disabled={saving}>{saving?'Salvando...':'CRIAR HÁBITO'}</button>
+            <button className="btn-save" onClick={onAdd} disabled={saving}>{saving?'Salvando...':'CRIAR HÃBITO'}</button>
             <button className="btn-cancel" onClick={()=>setShowAdd(false)}>CANCELAR</button>
           </div>
         </div>
@@ -909,9 +909,9 @@ function HabManage({ habits, logs, editId, setEditId, onDelete, showAdd, setShow
   );
 }
 
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // KANBAN PAGE
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function KanbanPage({ tasks, kbCols, kbTags, onNewTask, onEditTask, onDeleteTask, onMoveTask, dragId, onOpenSettings }) {
   const tot=tasks.length;
   return (
@@ -919,7 +919,7 @@ function KanbanPage({ tasks, kbCols, kbTags, onNewTask, onEditTask, onDeleteTask
       <div className="kb-toolbar">
         <div className="kb-meta">{tot} TAREFA{tot!==1?'S':''}</div>
         <div className="kb-toolbar-btns">
-          <button className="btn-settings" onClick={onOpenSettings}>⚙ CONFIGURAR</button>
+          <button className="btn-settings" onClick={onOpenSettings}>âš™ CONFIGURAR</button>
           <button className="btn-new-task" onClick={()=>onNewTask()}>+ NOVA TAREFA</button>
         </div>
       </div>
@@ -973,32 +973,32 @@ function TaskCard({ task, kbCols, kbTags, onEdit, onDelete, onMove, dragId }) {
       {task.description && <div className="tc-desc">{task.description}</div>}
       {task.reminder && (
         <div className={`tc-reminder${reminderPast(task.reminder)?' past':''}`}>
-          {reminderPast(task.reminder)?'⏰':'🔔'} {fmtReminder(task.reminder)}
+          {reminderPast(task.reminder)?'â°':'ðŸ””'} {fmtReminder(task.reminder)}
         </div>
       )}
       <div className="tc-foot">
         <div className="tc-actions">
-          {colIdx>0 && <button className="tc-btn" title={'← '+kbCols[colIdx-1]?.label} onClick={e=>{e.stopPropagation();onMove(task.id,kbCols[colIdx-1].id);}}>←</button>}
-          {colIdx<kbCols.length-1 && <button className="tc-btn" title={'→ '+kbCols[colIdx+1]?.label} onClick={e=>{e.stopPropagation();onMove(task.id,kbCols[colIdx+1].id);}}>→</button>}
-          <button className="tc-btn" title="Editar" onClick={e=>{e.stopPropagation();onEdit(task.id);}}>✎</button>
-          <button className="tc-btn danger" title="Excluir" onClick={e=>{e.stopPropagation();if(window.confirm('Excluir tarefa?'))onDelete(task.id);}}>✕</button>
+          {colIdx>0 && <button className="tc-btn" title={'â† '+kbCols[colIdx-1]?.label} onClick={e=>{e.stopPropagation();onMove(task.id,kbCols[colIdx-1].id);}}>â†</button>}
+          {colIdx<kbCols.length-1 && <button className="tc-btn" title={'â†’ '+kbCols[colIdx+1]?.label} onClick={e=>{e.stopPropagation();onMove(task.id,kbCols[colIdx+1].id);}}>â†’</button>}
+          <button className="tc-btn" title="Editar" onClick={e=>{e.stopPropagation();onEdit(task.id);}}>âœŽ</button>
+          <button className="tc-btn danger" title="Excluir" onClick={e=>{e.stopPropagation();if(window.confirm('Excluir tarefa?'))onDelete(task.id);}}>âœ•</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // TASK MODAL
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function TaskModal({ editId, kbCols, kbTags, tTitle, setTTitle, tDesc, setTDesc, tCol, setTCol, tTags, setTTags, tReminder, setTReminder, onSave, saving, onClose }) {
   return (
     <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
       <div className="modal">
         <div className="modal-h"><div className="acc-dot"/>{editId?'Editar Tarefa':'Nova Tarefa'}</div>
-        <label className="mlabel" style={{marginTop:0}}>TÍTULO</label>
+        <label className="mlabel" style={{marginTop:0}}>TÃTULO</label>
         <input className="minput" placeholder="Descreva a tarefa..." value={tTitle} onChange={e=>setTTitle(e.target.value)} onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&onSave()} autoFocus/>
-        <label className="mlabel">DESCRIÇÃO</label>
+        <label className="mlabel">DESCRIÃ‡ÃƒO</label>
         <textarea className="minput" placeholder="Detalhes opcionais..." value={tDesc} onChange={e=>setTDesc(e.target.value)}/>
         <label className="mlabel">COLUNA</label>
         <select className="mselect" value={tCol} onChange={e=>setTCol(e.target.value)}>
@@ -1018,9 +1018,9 @@ function TaskModal({ editId, kbCols, kbTags, tTitle, setTTitle, tDesc, setTDesc,
         <label className="mlabel">LEMBRETE</label>
         <div className="reminder-row">
           <input className="minput" type="datetime-local" value={tReminder} onChange={e=>setTReminder(e.target.value)} style={{colorScheme:'dark',flex:1}}/>
-          {tReminder && <button className="btn-cancel" style={{padding:'10px 12px',flexShrink:0}} onClick={()=>setTReminder('')} title="Remover lembrete">✕</button>}
+          {tReminder && <button className="btn-cancel" style={{padding:'10px 12px',flexShrink:0}} onClick={()=>setTReminder('')} title="Remover lembrete">âœ•</button>}
         </div>
-        {tReminder && <div style={{fontFamily:'var(--fm)',fontSize:'10px',color:'var(--blue)',marginTop:6,letterSpacing:'.04em'}}>🔔 {fmtReminder(tReminder)}</div>}
+        {tReminder && <div style={{fontFamily:'var(--fm)',fontSize:'10px',color:'var(--blue)',marginTop:6,letterSpacing:'.04em'}}>ðŸ”” {fmtReminder(tReminder)}</div>}
         <div className="modal-btns">
           <button className="modal-save" onClick={onSave} disabled={saving}>{saving?'Salvando...':(editId?'SALVAR':'CRIAR TAREFA')}</button>
           <button className="modal-close" onClick={onClose}>CANCELAR</button>
@@ -1030,14 +1030,14 @@ function TaskModal({ editId, kbCols, kbTags, tTitle, setTTitle, tDesc, setTDesc,
   );
 }
 
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // SETTINGS MODAL
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function SettingsModal({ kbCols, kbTags, onAddCol, onDeleteCol, onUpdateCol, onReorderCol, onAddTag, onDeleteTag, onUpdateTag, newColName, setNewColName, newColColor, setNewColColor, newTagName, setNewTagName, newTagColor, setNewTagColor, pickingColorFor, setPickingColorFor, onClose }) {
   return (
     <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
       <div className="modal">
-        <div className="modal-h"><div className="acc-dot"/>Configurações do Kanban</div>
+        <div className="modal-h"><div className="acc-dot"/>ConfiguraÃ§Ãµes do Kanban</div>
 
         {/* COLUMNS */}
         <div className="settings-section">
@@ -1045,11 +1045,11 @@ function SettingsModal({ kbCols, kbTags, onAddCol, onDeleteCol, onUpdateCol, onR
           {kbCols.map((col, idx)=>(
             <div key={col.id} className="set-item">
               <div style={{display:'flex',flexDirection:'column',gap:2,flexShrink:0}}>
-                <button className="reorder-btn" onClick={()=>onReorderCol(col.id,-1)} disabled={idx===0} title="Mover para cima">▲</button>
-                <button className="reorder-btn" onClick={()=>onReorderCol(col.id,1)} disabled={idx===kbCols.length-1} title="Mover para baixo">▼</button>
+                <button className="reorder-btn" onClick={()=>onReorderCol(col.id,-1)} disabled={idx===0} title="Mover para cima">â–²</button>
+                <button className="reorder-btn" onClick={()=>onReorderCol(col.id,1)} disabled={idx===kbCols.length-1} title="Mover para baixo">â–¼</button>
               </div>
               <input className="set-item-input" value={col.label} onChange={e=>onUpdateCol(col.id,{label:e.target.value})}/>
-              <button className="set-del" onClick={()=>{if(kbCols.length<=1){alert('Mínimo 1 coluna.');return;}if(window.confirm(`Excluir "${col.label}"?`))onDeleteCol(col.id);}}>✕</button>
+              <button className="set-del" onClick={()=>{if(kbCols.length<=1){alert('MÃ­nimo 1 coluna.');return;}if(window.confirm(`Excluir "${col.label}"?`))onDeleteCol(col.id);}}>âœ•</button>
             </div>
           ))}
           <div style={{display:'flex',gap:8,marginTop:4,alignItems:'center'}}>
@@ -1066,7 +1066,7 @@ function SettingsModal({ kbCols, kbTags, onAddCol, onDeleteCol, onUpdateCol, onR
               <div className="set-item">
                 <div className="set-color-dot" style={{background:tag.color}} onClick={()=>setPickingColorFor(pickingColorFor?.id===tag.id?null:{type:'tag',id:tag.id})}/>
                 <input className="set-item-input" value={tag.label} onChange={e=>onUpdateTag(tag.id,{label:e.target.value})}/>
-                <button className="set-del" onClick={()=>{if(window.confirm(`Excluir "${tag.label}"?`))onDeleteTag(tag.id);}}>✕</button>
+                <button className="set-del" onClick={()=>{if(window.confirm(`Excluir "${tag.label}"?`))onDeleteTag(tag.id);}}>âœ•</button>
               </div>
               {pickingColorFor?.id===tag.id && (
                 <div className="color-swatch-row">
@@ -1095,18 +1095,18 @@ function SettingsModal({ kbCols, kbTags, onAddCol, onDeleteCol, onUpdateCol, onR
   );
 }
 
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // JOURNAL PAGE
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const MOODS = [
-  { id: 'great',  emoji: '😄', label: 'Ótimo'    },
-  { id: 'good',   emoji: '🙂', label: 'Bem'       },
-  { id: 'meh',    emoji: '😐', label: 'Neutro'    },
-  { id: 'bad',    emoji: '😔', label: 'Mal'       },
-  { id: 'awful',  emoji: '😞', label: 'Péssimo'   },
+  { id: 'great',  emoji: 'ðŸ˜„', label: 'Ã“timo'    },
+  { id: 'good',   emoji: 'ðŸ™‚', label: 'Bem'       },
+  { id: 'meh',    emoji: 'ðŸ˜', label: 'Neutro'    },
+  { id: 'bad',    emoji: 'ðŸ˜”', label: 'Mal'       },
+  { id: 'awful',  emoji: 'ðŸ˜ž', label: 'PÃ©ssimo'   },
 ];
 
-const JTAGS = ['Trabalho','Pessoal','Saúde','Família','Reflexão','Gratidão','Planos','Sonhos','Aprendizado','Outros'];
+const JTAGS = ['Trabalho','Pessoal','SaÃºde','FamÃ­lia','ReflexÃ£o','GratidÃ£o','Planos','Sonhos','Aprendizado','Outros'];
 
 const fmtEntryDate = iso => {
   const d = new Date(iso + 'T12:00:00');
@@ -1131,7 +1131,7 @@ const groupByMonth = entries => {
 
 const monthLabel = key => {
   const [y, m] = key.split('-');
-  const months = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const months = ['Janeiro','Fevereiro','MarÃ§o','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
   return `${months[parseInt(m)-1]} ${y}`;
 };
 
@@ -1219,12 +1219,12 @@ function JournalPage({ entries, onSave, onDelete }) {
 
   return (
     <div className="journal-layout">
-      {/* ── LEFT: entries list ── */}
+      {/* â”€â”€ LEFT: entries list â”€â”€ */}
       {(!showEditor || isDesktop) && (
         <div className="journal-list">
           {/* Search + new */}
           <div className="journal-list-top">
-            <input className="journal-search" placeholder="🔍 Buscar..." value={search} onChange={e=>setSearch(e.target.value)}/>
+            <input className="journal-search" placeholder="ðŸ” Buscar..." value={search} onChange={e=>setSearch(e.target.value)}/>
             <button className="journal-new-btn" onClick={newEntry}>+ Nova</button>
           </div>
           {/* Mood filter */}
@@ -1241,11 +1241,11 @@ function JournalPage({ entries, onSave, onDelete }) {
           {/* On this day */}
           {onThisDay.length > 0 && !search && !filterMood && (
             <div className="journal-otd">
-              <div className="journal-otd-label">✦ Neste dia</div>
+              <div className="journal-otd-label">âœ¦ Neste dia</div>
               {onThisDay.map(e => (
                 <button key={e.id} className={`journal-otd-item${selectedId===e.id?' active':''}`} onClick={()=>openEntry(e)}>
                   <span className="journal-otd-year">{e.entry_date.split('-')[0]}</span>
-                  <span className="journal-otd-title">{e.title || e.body?.slice(0,40) || 'Entrada sem título'}</span>
+                  <span className="journal-otd-title">{e.title || e.body?.slice(0,40) || 'Entrada sem tÃ­tulo'}</span>
                 </button>
               ))}
             </div>
@@ -1254,9 +1254,9 @@ function JournalPage({ entries, onSave, onDelete }) {
           <div className="journal-list-scroll">
           {Object.keys(grouped).length === 0 ? (
             <div className="empty" style={{paddingTop:40}}>
-              <div className="empty-ico">📖</div>
+              <div className="empty-ico">ðŸ“–</div>
               <div className="empty-h">{search||filterMood?'Nenhuma entrada encontrada':'Nenhuma entrada ainda'}</div>
-              <div className="empty-s">{!search&&!filterMood&&'Clique em "+ Nova" para começar'}</div>
+              <div className="empty-s">{!search&&!filterMood&&'Clique em "+ Nova" para comeÃ§ar'}</div>
             </div>
           ) : Object.keys(grouped).map(month => (
             <div key={month} className="journal-month-group">
@@ -1271,8 +1271,8 @@ function JournalPage({ entries, onSave, onDelete }) {
                     </div>
                     <div className="journal-entry-item-body">
                       <div className="journal-entry-text">
-                        <div className="journal-entry-title">{e.title || 'Sem título'}</div>
-                        <div className="journal-entry-preview">{e.body?.slice(0,80) || '—'}</div>
+                        <div className="journal-entry-title">{e.title || 'Sem tÃ­tulo'}</div>
+                        <div className="journal-entry-preview">{e.body?.slice(0,80) || 'â€”'}</div>
                       </div>
                       {e.image_url && (
                         <div className="journal-entry-thumb-wrap">
@@ -1294,28 +1294,28 @@ function JournalPage({ entries, onSave, onDelete }) {
         </div>
       )}
 
-      {/* ── RIGHT: editor ── */}
+      {/* â”€â”€ RIGHT: editor â”€â”€ */}
       {showEditor ? (
         <div className="journal-editor">
           {/* Editor header */}
           <div className="journal-editor-header">
             {!isDesktop && (
-              <button className="journal-back-btn" onClick={()=>{setSelectedId(null);setIsNew(false);}}>← Voltar</button>
+              <button className="journal-back-btn" onClick={()=>{setSelectedId(null);setIsNew(false);}}>â† Voltar</button>
             )}
             <input type="date" className="journal-date-input" value={eDate} onChange={e=>{setEDate(e.target.value);setDirty(true);}}
               disabled={!isNew} style={!isNew?{opacity:.5,cursor:'default'}:{}}/>
             <div className="journal-editor-actions">
               {(selectedId||isNew) && !isNew && (
-                <button className="journal-del-btn" onClick={del} title="Excluir entrada">🗑</button>
+                <button className="journal-del-btn" onClick={del} title="Excluir entrada">ðŸ—‘</button>
               )}
               <button className="journal-save-btn" onClick={save} disabled={saving||(!dirty&&!isNew)}>
-                {saving ? '...' : dirty||isNew ? 'Salvar' : 'Salvo ✓'}
+                {saving ? '...' : dirty||isNew ? 'Salvar' : 'Salvo âœ“'}
               </button>
             </div>
           </div>
           {/* Mood picker */}
           <div className="journal-mood-row">
-            <span className="journal-mood-label">Como você está?</span>
+            <span className="journal-mood-label">Como vocÃª estÃ¡?</span>
             {MOODS.map(m => (
               <button key={m.id} className={`journal-mood-opt${eMood===m.id?' active':''}`}
                 onClick={()=>{setEMood(m.id);setDirty(true);}}>
@@ -1327,7 +1327,7 @@ function JournalPage({ entries, onSave, onDelete }) {
           {/* Title */}
           <input
             className="journal-title-input"
-            placeholder="Título (opcional)..."
+            placeholder="TÃ­tulo (opcional)..."
             value={eTitle}
             onChange={e=>{setETitle(e.target.value);setDirty(true);}}
           />
@@ -1335,9 +1335,9 @@ function JournalPage({ entries, onSave, onDelete }) {
           <textarea
             ref={textRef}
             className="journal-body-input"
-            placeholder="O que está na sua mente hoje?
+            placeholder="O que estÃ¡ na sua mente hoje?
 
-Escreva livremente. Este é o seu espaço..."
+Escreva livremente. Este Ã© o seu espaÃ§o..."
             value={eBody}
             onChange={e=>{setEBody(e.target.value);setDirty(true);}}
           />
@@ -1346,7 +1346,7 @@ Escreva livremente. Este é o seu espaço..."
             {eImage ? (
               <div className="journal-image-preview-wrap">
                 <img src={eImage} alt="Imagem da entrada" className="journal-image-preview"/>
-                <button className="journal-image-remove" onClick={()=>{setEImage(null);setDirty(true);}} title="Remover imagem">✕</button>
+                <button className="journal-image-remove" onClick={()=>{setEImage(null);setDirty(true);}} title="Remover imagem">âœ•</button>
               </div>
             ) : (
               <label className="journal-image-upload">
@@ -1358,7 +1358,7 @@ Escreva livremente. Este é o seu espaço..."
                   reader.onload = e => { setEImage(e.target.result); setDirty(true); };
                   reader.readAsDataURL(file);
                 }}/>
-                <span className="journal-image-upload-ico">🖼</span>
+                <span className="journal-image-upload-ico">ðŸ–¼</span>
                 <span className="journal-image-upload-label">Adicionar imagem</span>
               </label>
             )}
@@ -1380,13 +1380,13 @@ Escreva livremente. Este é o seu espaço..."
           </div>
           {/* Word count */}
           <div className="journal-wordcount">
-            {eBody.trim() ? `${eBody.trim().split(/\s+/).length} palavras · ${eBody.length} caracteres` : ''}
+            {eBody.trim() ? `${eBody.trim().split(/\s+/).length} palavras Â· ${eBody.length} caracteres` : ''}
           </div>
         </div>
       ) : (
         isDesktop && (
           <div className="journal-empty-editor">
-            <div style={{fontSize:48,marginBottom:16}}>📖</div>
+            <div style={{fontSize:48,marginBottom:16}}>ðŸ“–</div>
             <div style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--t3)',letterSpacing:'.12em',textAlign:'center'}}>
               SELECIONE UMA ENTRADA<br/>OU CRIE UMA NOVA
             </div>
@@ -1397,12 +1397,13 @@ Escreva livremente. Este é o seu espaço..."
   );
 }
 
-// ─────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // ROUTINE PAGE
-// ─────────────────────────────────────────────────────
-const DAYS_FULL = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const DAYS_FULL = ['Dom','Seg','Ter','Qua','Qui','Sex','SÃ¡b'];
 const BLOCK_COLORS = ['#5BA896','#4A7FAA','#7A6FAA','#AA6F7A','#AA8F4A','#6FAA6F','#AA6F4A','#4A9AAA'];
-const BLOCK_ICONS  = ['⏰','🏃','🧘','📚','☕','🍳','🚿','💊','✍️','🎯','💪','🥗','💧','🎨','🎵','🧠','📱','💼','🌅','🌙'];
+// Reuse full icon library from habits
+const BLOCK_ICONS = ALL_ICONS;
 
 function timeToMin(t) {
   const [h,m] = t.split(':').map(Number);
@@ -1435,7 +1436,7 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
 
   // Block form
   const [bTitle,    setBTitle]    = useState('');
-  const [bIcon,     setBIcon]     = useState('⏰');
+  const [bIcon,     setBIcon]     = useState('â°');
   const [bStart,    setBStart]    = useState('07:00');
   const [bEnd,      setBEnd]      = useState('07:30');
   const [bColor,    setBColor]    = useState('#5BA896');
@@ -1465,10 +1466,12 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
   const progress     = currentBlocks.length > 0 ? Math.round(doneBlocks.length / currentBlocks.length * 100) : 0;
 
   const nowMin = new Date().getHours()*60 + new Date().getMinutes();
-  const nowBlock = currentBlocks.find(b => {
+  // Only show "Agora" if today is an active day for this routine
+  const routineActiveToday = (currentRoutine?.days||[]).includes(todayDow);
+  const nowBlock = routineActiveToday ? currentBlocks.find(b => {
     const start = timeToMin(b.start_time);
     return nowMin >= start && nowMin < start + b.duration;
-  });
+  }) : null;
 
   const saveRoutine = async () => {
     if (!nrName.trim()) return;
@@ -1487,12 +1490,12 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
     } else {
       await onAddBlock(activeRoutine, payload);
     }
-    setBTitle(''); setBIcon('⏰'); setBStart('07:00'); setBEnd('07:30'); setBColor('#5BA896');
+    setBTitle(''); setBIcon('â°'); setBStart('07:00'); setBEnd('07:30'); setBColor('#5BA896');
     setShowNewBlock(false);
   };
 
   const openEditBlock = b => {
-    setEditBlockId(b.id); setBTitle(b.title); setBIcon(b.icon||'⏰');
+    setEditBlockId(b.id); setBTitle(b.title); setBIcon(b.icon||'â°');
     setBStart(b.start_time);
     setBEnd(minToTime(timeToMin(b.start_time) + b.duration));
     setBColor(b.color||'#5BA896');
@@ -1500,7 +1503,7 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
   };
 
   const openNewBlock = () => {
-    setEditBlockId(null); setBTitle(''); setBIcon('⏰');
+    setEditBlockId(null); setBTitle(''); setBIcon('â°');
     const lastStart = currentBlocks.length > 0
       ? minToTime(timeToMin(currentBlocks[currentBlocks.length-1].start_time) + currentBlocks[currentBlocks.length-1].duration)
       : '07:00';
@@ -1512,7 +1515,7 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
 
   return (
     <div className="routine-page">
-      {/* ── ROUTINE TABS ── */}
+      {/* â”€â”€ ROUTINE TABS â”€â”€ */}
       <div className="routine-tabs-row">
         <div className="routine-tabs">
           {routines.map(r => (
@@ -1526,7 +1529,7 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
                 {(r.days||[]).includes(todayDow) && <span className="routine-tab-today">HOJE</span>}
               </button>
               {activeRoutine===r.id && (
-                <button className="routine-tab-edit" onClick={()=>setShowManage(true)} title="Editar rotina">✎</button>
+                <button className="routine-tab-edit" onClick={()=>setShowManage(true)} title="Editar rotina">âœŽ</button>
               )}
             </div>
           ))}
@@ -1536,20 +1539,26 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
 
       {!currentRoutine ? (
         <div className="empty fade" style={{paddingTop:60}}>
-          <div className="empty-ico">◷</div>
+          <div className="empty-ico">â—·</div>
           <div className="empty-h">Nenhuma rotina criada</div>
-          <div className="empty-s">Clique em "+ Nova" para começar</div>
+          <div className="empty-s">Clique em "+ Nova" para comeÃ§ar</div>
         </div>
       ) : (
         <>
-          {/* ── PROGRESS CARD ── */}
+          {/* â”€â”€ PROGRESS CARD â”€â”€ */}
           <div className="routine-progress-card fade">
             <div className="routine-progress-info">
               <div className="routine-progress-title">
-                {progress===100 ? '🎉 Rotina concluída!' : nowBlock ? `Agora: ${nowBlock.icon} ${nowBlock.title}` : currentRoutine.name}
+                {!routineActiveToday
+                  ? `${currentRoutine.name} â€” nÃ£o Ã© hoje`
+                  : progress===100
+                    ? 'ðŸŽ‰ Rotina concluÃ­da!'
+                    : nowBlock
+                      ? `Agora: ${nowBlock.icon} ${nowBlock.title}`
+                      : currentRoutine.name}
               </div>
               <div className="routine-progress-sub">
-                {doneBlocks.length}/{currentBlocks.length} concluídos · {progress}%
+                {doneBlocks.length}/{currentBlocks.length} concluÃ­dos Â· {progress}%
               </div>
             </div>
             <div className="routine-progress-bar-wrap">
@@ -1567,11 +1576,11 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
             </div>
           </div>
 
-          {/* ── TIMELINE ── */}
+          {/* â”€â”€ TIMELINE â”€â”€ */}
           <div className="routine-timeline fade">
             {currentBlocks.length === 0 ? (
               <div className="routine-empty-blocks">
-                <div style={{fontSize:32,marginBottom:8}}>⏱</div>
+                <div style={{fontSize:32,marginBottom:8}}>â±</div>
                 <div style={{fontFamily:'var(--fm)',fontSize:11,color:'var(--t3)',letterSpacing:'.1em'}}>NENHUM BLOCO ADICIONADO</div>
               </div>
             ) : currentBlocks.map((b, i) => {
@@ -1587,18 +1596,18 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
                   <div className="rt-card" style={done?{borderColor:b.color+'50',background:b.color+'08'}:isNow?{borderColor:b.color+'80',boxShadow:`0 0 0 1px ${b.color}20`}:{}}>
                     {isNow && <div className="rt-now-badge">AGORA</div>}
                     <div className="rt-card-left">
-                      <div className="rt-icon" style={{background:b.color+'18',border:`1px solid ${b.color}30`}}>{b.icon||'⏰'}</div>
+                      <div className="rt-icon" style={{background:b.color+'18',border:`1px solid ${b.color}30`}}>{b.icon||'â°'}</div>
                       <div className="rt-info">
                         <div className="rt-title" style={done?{color:b.color}:{}}>{b.title}</div>
-                        <div className="rt-meta">{fmtTime(b.start_time)} → {fmtTime(minToTime(endMin))} · {fmtDuration(b.duration)}</div>
+                        <div className="rt-meta">{fmtTime(b.start_time)} â†’ {fmtTime(minToTime(endMin))} Â· {fmtDuration(b.duration)}</div>
                       </div>
                     </div>
                     <div className="rt-card-right">
-                      <button className="rt-edit-btn" onClick={()=>openEditBlock(b)} title="Editar">✎</button>
+                      <button className="rt-edit-btn" onClick={()=>openEditBlock(b)} title="Editar">âœŽ</button>
                       <button className={`rt-check${done?' done':''}`}
                         style={done?{background:b.color,borderColor:b.color}:{}}
                         onClick={()=>onToggleBlock(b.id)}>
-                        {done?'✓':''}
+                        {done?'âœ“':''}
                       </button>
                     </div>
                   </div>
@@ -1610,13 +1619,13 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
         </>
       )}
 
-      {/* ── NEW ROUTINE MODAL ── */}
+      {/* â”€â”€ NEW ROUTINE MODAL â”€â”€ */}
       {showNewRoutine && (
         <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setShowNewRoutine(false);}}>
           <div className="modal">
             <div className="modal-h"><div className="acc-dot"/>Nova Rotina</div>
             <label className="mlabel" style={{marginTop:0}}>NOME</label>
-            <input className="minput" placeholder="Ex: Manhã, Noturna, Fim de semana..." value={nrName} onChange={e=>setNrName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&saveRoutine()} autoFocus/>
+            <input className="minput" placeholder="Ex: ManhÃ£, Noturna, Fim de semana..." value={nrName} onChange={e=>setNrName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&saveRoutine()} autoFocus/>
             <label className="mlabel">COR</label>
             <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:4}}>
               {BLOCK_COLORS.map(c=><button key={c} style={{width:26,height:26,borderRadius:5,background:c,border:`2px solid ${nrColor===c?'var(--t1)':'transparent'}`,cursor:'pointer',transition:'all .12s'}} onClick={()=>setNrColor(c)}/>)}
@@ -1638,20 +1647,18 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
         </div>
       )}
 
-      {/* ── BLOCK MODAL ── */}
+      {/* â”€â”€ BLOCK MODAL â”€â”€ */}
       {showNewBlock && (
         <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget){setShowNewBlock(false);setEditBlockId(null);}}}>
           <div className="modal">
             <div className="modal-h"><div className="acc-dot"/>{editBlockId?'Editar Bloco':'Novo Bloco'}</div>
             <label className="mlabel" style={{marginTop:0}}>ATIVIDADE</label>
-            <input className="minput" placeholder="Ex: Meditação, Café, Exercício..." value={bTitle} onChange={e=>setBTitle(e.target.value)} autoFocus/>
-            <label className="mlabel">ÍCONE</label>
-            <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:4}}>
-              {BLOCK_ICONS.map(ic=><button key={ic} className={`icon-btn${bIcon===ic?' sel':''}`} onClick={()=>setBIcon(ic)}>{ic}</button>)}
-            </div>
+            <input className="minput" placeholder="Ex: MeditaÃ§Ã£o, CafÃ©, ExercÃ­cio..." value={bTitle} onChange={e=>setBTitle(e.target.value)} autoFocus/>
+            <label className="mlabel">ÃCONE</label>
+            <IconPicker value={bIcon} onChange={setBIcon}/>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginTop:4}}>
               <div>
-                <label className="mlabel">INÍCIO</label>
+                <label className="mlabel">INÃCIO</label>
                 <input className="minput" type="time" value={bStart}
                   onChange={e=>{setBStart(e.target.value);}}
                   style={{colorScheme:'dark'}}/>
@@ -1666,7 +1673,7 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
             {/* Duration preview */}
             {bStart && bEnd && (
               <div style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--acc)',letterSpacing:'.08em',marginTop:6,marginBottom:4}}>
-                ⏱ Duração: {fmtDuration(bDurationCalc())}
+                â± DuraÃ§Ã£o: {fmtDuration(bDurationCalc())}
               </div>
             )}
             <label className="mlabel">COR</label>
@@ -1682,7 +1689,7 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
         </div>
       )}
 
-      {/* ── MANAGE ROUTINE MODAL ── */}
+      {/* â”€â”€ MANAGE ROUTINE MODAL â”€â”€ */}
       {showManage && currentRoutine && (
         <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setShowManage(false);}}>
           <div className="modal">
@@ -1712,4 +1719,4 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
       )}
     </div>
   );
-}
+          }
