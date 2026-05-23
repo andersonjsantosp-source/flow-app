@@ -1437,13 +1437,19 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
   const [bTitle,    setBTitle]    = useState('');
   const [bIcon,     setBIcon]     = useState('⏰');
   const [bStart,    setBStart]    = useState('07:00');
-  const [bDuration, setBDuration] = useState(30);
+  const [bEnd,      setBEnd]      = useState('07:30');
   const [bColor,    setBColor]    = useState('#5BA896');
 
-  const td = todayKey();
-  const todayDow = new Date().getDay(); // 0=Sun
+  // Computed duration from start/end
+  const bDurationCalc = () => {
+    const s = timeToMin(bStart), e = timeToMin(bEnd);
+    const diff = e > s ? e - s : (24*60 - s + e); // handle overnight
+    return Math.max(5, diff);
+  };
 
-  // Auto-select today's routine
+  const td = todayKey();
+  const todayDow = new Date().getDay();
+
   useEffect(() => {
     if (!activeRoutine && routines.length > 0) {
       const todayR = routines.find(r => (r.days||[]).includes(todayDow));
@@ -1455,11 +1461,9 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
   const currentBlocks  = blocks.filter(b => b.routine_id === activeRoutine)
     .sort((a,b) => timeToMin(a.start_time) - timeToMin(b.start_time));
 
-  // Progress
   const doneBlocks   = currentBlocks.filter(b => (logs[td]||[]).includes(b.id));
   const progress     = currentBlocks.length > 0 ? Math.round(doneBlocks.length / currentBlocks.length * 100) : 0;
 
-  // Current block (what should be happening now)
   const nowMin = new Date().getHours()*60 + new Date().getMinutes();
   const nowBlock = currentBlocks.find(b => {
     const start = timeToMin(b.start_time);
@@ -1475,20 +1479,34 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
 
   const saveBlock = async () => {
     if (!bTitle.trim()) return;
-    const payload = { title:bTitle, icon:bIcon, start_time:bStart, duration:bDuration, color:bColor };
+    const duration = bDurationCalc();
+    const payload = { title:bTitle, icon:bIcon, start_time:bStart, duration, color:bColor };
     if (editBlockId) {
       await onUpdateBlock(editBlockId, payload);
       setEditBlockId(null);
     } else {
       await onAddBlock(activeRoutine, payload);
     }
-    setBTitle(''); setBIcon('⏰'); setBStart('07:00'); setBDuration(30); setBColor('#5BA896');
+    setBTitle(''); setBIcon('⏰'); setBStart('07:00'); setBEnd('07:30'); setBColor('#5BA896');
     setShowNewBlock(false);
   };
 
   const openEditBlock = b => {
     setEditBlockId(b.id); setBTitle(b.title); setBIcon(b.icon||'⏰');
-    setBStart(b.start_time); setBDuration(b.duration); setBColor(b.color||'#5BA896');
+    setBStart(b.start_time);
+    setBEnd(minToTime(timeToMin(b.start_time) + b.duration));
+    setBColor(b.color||'#5BA896');
+    setShowNewBlock(true);
+  };
+
+  const openNewBlock = () => {
+    setEditBlockId(null); setBTitle(''); setBIcon('⏰');
+    const lastStart = currentBlocks.length > 0
+      ? minToTime(timeToMin(currentBlocks[currentBlocks.length-1].start_time) + currentBlocks[currentBlocks.length-1].duration)
+      : '07:00';
+    const lastEnd = minToTime(timeToMin(lastStart) + 30);
+    setBStart(lastStart); setBEnd(lastEnd);
+    setBColor(currentRoutine?.color || '#5BA896');
     setShowNewBlock(true);
   };
 
@@ -1498,21 +1516,22 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
       <div className="routine-tabs-row">
         <div className="routine-tabs">
           {routines.map(r => (
-            <button key={r.id}
-              className={`routine-tab${activeRoutine===r.id?' active':''}`}
-              style={activeRoutine===r.id ? {'--rt-color': r.color} : {}}
-              onClick={()=>setActiveRoutine(r.id)}>
-              <span className="routine-tab-dot" style={{background: r.color}}/>
-              {r.name}
-              {/* today indicator */}
-              {(r.days||[]).includes(todayDow) && <span className="routine-tab-today">HOJE</span>}
-            </button>
+            <div key={r.id} className={`routine-tab-wrap${activeRoutine===r.id?' active':''}`}>
+              <button
+                className={`routine-tab${activeRoutine===r.id?' active':''}`}
+                style={activeRoutine===r.id ? {'--rt-color': r.color} : {}}
+                onClick={()=>setActiveRoutine(r.id)}>
+                <span className="routine-tab-dot" style={{background: r.color}}/>
+                {r.name}
+                {(r.days||[]).includes(todayDow) && <span className="routine-tab-today">HOJE</span>}
+              </button>
+              {activeRoutine===r.id && (
+                <button className="routine-tab-edit" onClick={()=>setShowManage(true)} title="Editar rotina">✎</button>
+              )}
+            </div>
           ))}
           <button className="routine-tab-add" onClick={()=>setShowNewRoutine(true)}>+ Nova</button>
         </div>
-        {currentRoutine && (
-          <button className="routine-manage-btn" onClick={()=>setShowManage(true)}>⚙</button>
-        )}
       </div>
 
       {!currentRoutine ? (
@@ -1523,11 +1542,11 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
         </div>
       ) : (
         <>
-          {/* ── PROGRESS BAR ── */}
+          {/* ── PROGRESS CARD ── */}
           <div className="routine-progress-card fade">
             <div className="routine-progress-info">
               <div className="routine-progress-title">
-                {progress===100 ? '🎉 Rotina concluída!' : nowBlock ? `Agora: ${nowBlock.icon} ${nowBlock.title}` : `${currentRoutine.name}`}
+                {progress===100 ? '🎉 Rotina concluída!' : nowBlock ? `Agora: ${nowBlock.icon} ${nowBlock.title}` : currentRoutine.name}
               </div>
               <div className="routine-progress-sub">
                 {doneBlocks.length}/{currentBlocks.length} concluídos · {progress}%
@@ -1561,12 +1580,10 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
               const endMin = timeToMin(b.start_time) + b.duration;
               return (
                 <div key={b.id} className={`rt-block${done?' done':''}${isNow?' now':''}`}>
-                  {/* Time column */}
                   <div className="rt-time-col">
                     <div className="rt-start">{fmtTime(b.start_time)}</div>
                     {i < currentBlocks.length-1 && <div className="rt-line" style={{background:b.color+'40'}}/>}
                   </div>
-                  {/* Block card */}
                   <div className="rt-card" style={done?{borderColor:b.color+'50',background:b.color+'08'}:isNow?{borderColor:b.color+'80',boxShadow:`0 0 0 1px ${b.color}20`}:{}}>
                     {isNow && <div className="rt-now-badge">AGORA</div>}
                     <div className="rt-card-left">
@@ -1588,10 +1605,7 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
                 </div>
               );
             })}
-            {/* Add block button */}
-            <button className="rt-add-block" onClick={()=>{setEditBlockId(null);setBTitle('');setBIcon('⏰');setBStart(currentBlocks.length>0?minToTime(timeToMin(currentBlocks[currentBlocks.length-1].start_time)+currentBlocks[currentBlocks.length-1].duration):'07:00');setBDuration(30);setBColor(currentRoutine.color);setShowNewBlock(true);}}>
-              + Adicionar bloco
-            </button>
+            <button className="rt-add-block" onClick={openNewBlock}>+ Adicionar bloco</button>
           </div>
         </>
       )}
@@ -1638,15 +1652,23 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginTop:4}}>
               <div>
                 <label className="mlabel">INÍCIO</label>
-                <input className="minput" type="time" value={bStart} onChange={e=>setBStart(e.target.value)} style={{colorScheme:'dark'}}/>
+                <input className="minput" type="time" value={bStart}
+                  onChange={e=>{setBStart(e.target.value);}}
+                  style={{colorScheme:'dark'}}/>
               </div>
               <div>
-                <label className="mlabel">DURAÇÃO</label>
-                <select className="mselect" value={bDuration} onChange={e=>setBDuration(Number(e.target.value))}>
-                  {[5,10,15,20,30,45,60,90,120,180].map(m=><option key={m} value={m}>{fmtDuration(m)}</option>)}
-                </select>
+                <label className="mlabel">FIM</label>
+                <input className="minput" type="time" value={bEnd}
+                  onChange={e=>setBEnd(e.target.value)}
+                  style={{colorScheme:'dark'}}/>
               </div>
             </div>
+            {/* Duration preview */}
+            {bStart && bEnd && (
+              <div style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--acc)',letterSpacing:'.08em',marginTop:6,marginBottom:4}}>
+                ⏱ Duração: {fmtDuration(bDurationCalc())}
+              </div>
+            )}
             <label className="mlabel">COR</label>
             <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:4}}>
               {BLOCK_COLORS.map(c=><button key={c} style={{width:26,height:26,borderRadius:5,background:c,border:`2px solid ${bColor===c?'var(--t1)':'transparent'}`,cursor:'pointer',transition:'all .12s'}} onClick={()=>setBColor(c)}/>)}
