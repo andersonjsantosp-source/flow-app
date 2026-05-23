@@ -386,18 +386,21 @@ function FlowApp({ session }) {
 
   // ── JOURNAL ACTIONS ──────────────────────────────────
   const saveEntry = useCallback(async (entryData) => {
+    const base = { title: entryData.title, body: entryData.body, mood: entryData.mood, tags: entryData.tags };
+    const withImg = { ...base, image_url: entryData.image_url };
     if (entryData.id) {
-      const { data } = await supabase.from('journal_entries')
-        .update({ title: entryData.title, body: entryData.body, mood: entryData.mood, tags: entryData.tags, image_url: entryData.image_url })
-        .eq('id', entryData.id).select().single();
-      if (data) setEntries(prev => prev.map(e => e.id === data.id ? data : e));
-      return data;
+      // Try with image first, fallback without
+      let res = await supabase.from('journal_entries').update(withImg).eq('id', entryData.id).select().single();
+      if (res.error) res = await supabase.from('journal_entries').update(base).eq('id', entryData.id).select().single();
+      if (res.data) setEntries(prev => prev.map(e => e.id === res.data.id ? res.data : e));
+      return res.data;
     } else {
-      const { data } = await supabase.from('journal_entries')
-        .insert({ user_id: uid, title: entryData.title, body: entryData.body, mood: entryData.mood, tags: entryData.tags, entry_date: entryData.entry_date, image_url: entryData.image_url })
-        .select().single();
-      if (data) setEntries(prev => [data, ...prev]);
-      return data;
+      const insert = { user_id: uid, ...base, entry_date: entryData.entry_date };
+      const insertWithImg = { ...insert, image_url: entryData.image_url };
+      let res = await supabase.from('journal_entries').insert(insertWithImg).select().single();
+      if (res.error) res = await supabase.from('journal_entries').insert(insert).select().single();
+      if (res.data) setEntries(prev => [res.data, ...prev]);
+      return res.data;
     }
   }, [uid]);
 
@@ -1103,14 +1106,24 @@ function JournalPage({ entries, onSave, onDelete }) {
   const save = async () => {
     if (!eBody.trim() && !eTitle.trim()) return;
     setSaving(true);
-    const result = await onSave({
-      id: isNew ? null : selectedId,
-      title: eTitle, body: eBody,
-      mood: eMood, tags: eTags,
-      entry_date: eDate,
-      image_url: eImage || null,
-    });
-    if (result) { setSelectedId(result.id); setIsNew(false); }
+    try {
+      const payload = {
+        id: isNew ? null : selectedId,
+        title: eTitle, body: eBody,
+        mood: eMood, tags: eTags,
+        entry_date: eDate,
+        image_url: eImage || null,
+      };
+      // If image is large, try without it first then update image separately
+      let result = await onSave(payload);
+      if (!result && eImage) {
+        // Retry without image (may be too large for single request)
+        result = await onSave({ ...payload, image_url: null });
+      }
+      if (result) { setSelectedId(result.id); setIsNew(false); }
+    } catch(e) {
+      console.error('Save error:', e);
+    }
     setDirty(false); setSaving(false);
   };
 
