@@ -1147,3 +1147,14 @@ textarea.minput{resize:vertical;min-height:72px;line-height:1.5;}
   .routine-progress-card { padding: 14px 16px; gap: 14px; }
   .routine-progress-bar-wrap { min-width: 140px; }
 }
+
+/* ── ROUTINE TAB EDIT BUTTON ── */
+.routine-tab-wrap { display: flex; align-items: center; gap: 4px; }
+.routine-tab-edit {
+  width: 24px; height: 24px; border-radius: 5px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+  color: var(--t3); font-size: 11px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: all .12s;
+}
+.routine-tab-edit:hover { color: var(--acc); border-color: var(--acc); }
+:root[data-theme="light"] .routine-tab-edit { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.10); }
