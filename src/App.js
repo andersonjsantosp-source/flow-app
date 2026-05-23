@@ -160,6 +160,9 @@ function FlowApp({ session }) {
   const [kbTags,   setKbTags]   = useState([]);
   const [tasks,    setTasks]    = useState([]);
   const [entries,  setEntries]  = useState([]);  // journal entries
+  const [routines, setRoutines] = useState([]);
+  const [rBlocks,  setRBlocks]  = useState([]);
+  const [rLogs,    setRLogs]    = useState({});  // { dateKey: [blockId,...] }
   const [dataReady, setDataReady] = useState(false);
 
   // ── UI state ────────────────────────────────────────
@@ -189,13 +192,16 @@ function FlowApp({ session }) {
   // ── Load all data ────────────────────────────────────
   useEffect(() => {
     async function load() {
-      const [hRes, lRes, cRes, tgRes, tkRes, jRes] = await Promise.all([
+      const [hRes, lRes, cRes, tgRes, tkRes, jRes, rtRes, rbRes, rlRes] = await Promise.all([
         supabase.from('habits').select('*').eq('user_id', uid).order('created_at'),
         supabase.from('habit_logs').select('*').eq('user_id', uid),
         supabase.from('kb_cols').select('*').eq('user_id', uid).order('position'),
         supabase.from('kb_tags').select('*').eq('user_id', uid),
         supabase.from('tasks').select('*').eq('user_id', uid).order('position'),
         supabase.from('journal_entries').select('*').eq('user_id', uid).order('entry_date', {ascending:false}),
+        supabase.from('routines').select('*').eq('user_id', uid).order('position'),
+        supabase.from('routine_blocks').select('*').eq('user_id', uid).order('start_time'),
+        supabase.from('routine_logs').select('*').eq('user_id', uid),
       ]);
 
       setHabits(hRes.data || []);
@@ -228,6 +234,15 @@ function FlowApp({ session }) {
       const tk = tkRes.data || [];
       setTasks(tk);
       setEntries(jRes.data || []);
+      setRoutines(rtRes.data || []);
+      setRBlocks(rbRes.data || []);
+      // Build rLogs map: { dateKey: [blockId,...] }
+      const rlogsMap = {};
+      (rlRes.data || []).forEach(l => {
+        if (!rlogsMap[l.date]) rlogsMap[l.date] = [];
+        rlogsMap[l.date].push(l.block_id);
+      });
+      setRLogs(rlogsMap);
       if (cols.length > 0) setTCol(cols[0].id);
       setDataReady(true);
     }
@@ -384,6 +399,59 @@ function FlowApp({ session }) {
     await supabase.from('kb_tags').update(patch).eq('id', id);
   }, []);
 
+  // ── ROUTINE ACTIONS ──────────────────────────────────
+  const addRoutine = useCallback(async (name, color, days) => {
+    const pos = routines.length;
+    const { data } = await supabase.from('routines').insert({ user_id: uid, name, color, days, position: pos }).select().single();
+    if (data) setRoutines(prev => [...prev, data]);
+    return data;
+  }, [routines, uid]);
+
+  const updateRoutine = useCallback(async (id, patch) => {
+    setRoutines(prev => prev.map(r => r.id === id ? {...r, ...patch} : r));
+    await supabase.from('routines').update(patch).eq('id', id);
+  }, []);
+
+  const deleteRoutine = useCallback(async id => {
+    setRoutines(prev => prev.filter(r => r.id !== id));
+    setRBlocks(prev => prev.filter(b => b.routine_id !== id));
+    await supabase.from('routines').delete().eq('id', id);
+  }, []);
+
+  const addBlock = useCallback(async (routineId, block) => {
+    const pos = rBlocks.filter(b => b.routine_id === routineId).length;
+    const { data } = await supabase.from('routine_blocks')
+      .insert({ user_id: uid, routine_id: routineId, ...block, position: pos }).select().single();
+    if (data) setRBlocks(prev => [...prev, data]);
+    return data;
+  }, [rBlocks, uid]);
+
+  const updateBlock = useCallback(async (id, patch) => {
+    setRBlocks(prev => prev.map(b => b.id === id ? {...b, ...patch} : b));
+    await supabase.from('routine_blocks').update(patch).eq('id', id);
+  }, []);
+
+  const deleteBlock = useCallback(async id => {
+    setRBlocks(prev => prev.filter(b => b.id !== id));
+    await supabase.from('routine_blocks').delete().eq('id', id);
+  }, []);
+
+  const toggleBlock = useCallback(async (blockId, dateK) => {
+    const dk = dateK || todayKey();
+    const existing = (rLogs[dk] || []).includes(blockId);
+    setRLogs(prev => {
+      const arr = [...(prev[dk] || [])];
+      const i = arr.indexOf(blockId);
+      if (i >= 0) arr.splice(i, 1); else arr.push(blockId);
+      return { ...prev, [dk]: arr };
+    });
+    if (existing) {
+      await supabase.from('routine_logs').delete().eq('user_id', uid).eq('block_id', blockId).eq('date', dk);
+    } else {
+      await supabase.from('routine_logs').insert({ user_id: uid, block_id: blockId, date: dk });
+    }
+  }, [rLogs, uid]);
+
   // ── JOURNAL ACTIONS ──────────────────────────────────
   const saveEntry = useCallback(async (entryData) => {
     const base = { title: entryData.title, body: entryData.body, mood: entryData.mood, tags: entryData.tags };
@@ -429,9 +497,10 @@ function FlowApp({ session }) {
         <div className="sb-scroll">
           <div className="sb-section-label">Módulos</div>
           {[
-            {id:'habits', ico:'◎', label:'Hábitos', badge:`${doneH}/${habits.length}`},
-            {id:'kanban', ico:'⊞', label:'Kanban',  badge:`${tasks.length} tarefas`},
-            {id:'journal',ico:'✦', label:'Diário',  badge:`${entries.length} entradas`},
+            {id:'habits',  ico:'◎', label:'Hábitos', badge:`${doneH}/${habits.length}`},
+            {id:'kanban',  ico:'⊞', label:'Kanban',  badge:`${tasks.length} tarefas`},
+            {id:'journal', ico:'✦', label:'Diário',  badge:`${entries.length} entradas`},
+            {id:'routine', ico:'◷', label:'Rotina',  badge:`${routines.length} rotinas`},
           ].map(({id,ico,label,badge}) => (
             <button key={id} className={`sb-item ${page===id?'active':''}`} onClick={()=>setPage(id)}>
               <div className="sb-item-bar"/>
@@ -461,12 +530,16 @@ function FlowApp({ session }) {
       <div className="main">
         <div className="mod-header">
           <div className="mod-eyebrow fade">
-            {page==='habits' ? {today:'ACOMPANHAMENTO DIÁRIO',week:'VISÃO 7 DIAS',stats:'ANÁLISE DE DESEMPENHO',manage:'GERENCIAMENTO'}[habTab] : page==='kanban' ? 'GESTÃO DE TAREFAS' : 'REFLEXÕES & ANOTAÇÕES'}
+            {page==='habits' ? {today:'ACOMPANHAMENTO DIÁRIO',week:'VISÃO 7 DIAS',stats:'ANÁLISE DE DESEMPENHO',manage:'GERENCIAMENTO'}[habTab]
+            : page==='kanban'  ? 'GESTÃO DE TAREFAS'
+            : page==='journal' ? 'REFLEXÕES & ANOTAÇÕES'
+            : 'PLANEJAMENTO DO DIA'}
           </div>
           <div className="mod-title fade" dangerouslySetInnerHTML={{__html:
             page==='habits' ? {today:'Hábitos <span class="hi">de Hoje</span>',week:'Visão <span class="hi">Semanal</span>',stats:'Análise <span class="hi">de Dados</span>',manage:'Meus <span class="hi">Hábitos</span>'}[habTab]
-            : page==='kanban' ? 'Quadro <span class="hi">Kanban</span>'
-            : 'Meu <span class="hi">Diário</span>'
+            : page==='kanban'  ? 'Quadro <span class="hi">Kanban</span>'
+            : page==='journal' ? 'Meu <span class="hi">Diário</span>'
+            : 'Minha <span class="hi">Rotina</span>'
           }}/>
           {page==='habits' && (
             <div className="sub-tabs">
@@ -502,19 +575,27 @@ function FlowApp({ session }) {
           {page==='journal' && (
             <JournalPage entries={entries} onSave={saveEntry} onDelete={deleteEntry}/>
           )}
+          {page==='routine' && (
+            <RoutinePage
+              routines={routines} blocks={rBlocks} logs={rLogs}
+              onAddRoutine={addRoutine} onUpdateRoutine={updateRoutine} onDeleteRoutine={deleteRoutine}
+              onAddBlock={addBlock} onUpdateBlock={updateBlock} onDeleteBlock={deleteBlock}
+              onToggleBlock={toggleBlock}
+            />
+          )}
         </div>
       </div>
 
       {/* ── BOTTOM NAV ── */}
       <nav className="bnav">
-        {[{ico:'◎',label:'HÁBITOS',id:'habits'},{ico:'⊞',label:'KANBAN',id:'kanban'},{ico:'✦',label:'DIÁRIO',id:'journal'}].map(({ico,label,id})=>(
+        {[{ico:'◎',label:'HÁBITOS',id:'habits'},{ico:'⊞',label:'KANBAN',id:'kanban'},{ico:'✦',label:'DIÁRIO',id:'journal'},{ico:'◷',label:'ROTINA',id:'routine'}].map(({ico,label,id})=>(
           <button key={id} className={page===id?'active':''} onClick={()=>setPage(id)}>
             <span className="bnav-ico">{ico}</span><span>{label}</span><div className="bnav-pip"/>
           </button>
         ))}
-        <button onClick={toggleTheme} style={{maxWidth:60}}>
+        <button onClick={toggleTheme} style={{maxWidth:52}}>
           <span className="bnav-ico">{theme==='dark'?'☀':'☾'}</span>
-          <span>{theme==='dark'?'CLARO':'ESCURO'}</span>
+          <span>{theme==='dark'?'CLARO':'ESC'}</span>
         </button>
       </nav>
 
@@ -1311,6 +1392,301 @@ Escreva livremente. Este é o seu espaço..."
             </div>
           </div>
         )
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────
+// ROUTINE PAGE
+// ─────────────────────────────────────────────────────
+const DAYS_FULL = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const BLOCK_COLORS = ['#5BA896','#4A7FAA','#7A6FAA','#AA6F7A','#AA8F4A','#6FAA6F','#AA6F4A','#4A9AAA'];
+const BLOCK_ICONS  = ['⏰','🏃','🧘','📚','☕','🍳','🚿','💊','✍️','🎯','💪','🥗','💧','🎨','🎵','🧠','📱','💼','🌅','🌙'];
+
+function timeToMin(t) {
+  const [h,m] = t.split(':').map(Number);
+  return h*60+m;
+}
+function minToTime(m) {
+  return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
+}
+function fmtTime(t) {
+  const [h,m] = t.split(':').map(Number);
+  return `${h}:${String(m).padStart(2,'0')}`;
+}
+function fmtDuration(min) {
+  if (min < 60) return `${min}min`;
+  const h = Math.floor(min/60), m = min%60;
+  return m ? `${h}h${m}min` : `${h}h`;
+}
+
+function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, onDeleteRoutine, onAddBlock, onUpdateBlock, onDeleteBlock, onToggleBlock }) {
+  const [activeRoutine, setActiveRoutine] = useState(null);
+  const [showNewRoutine, setShowNewRoutine] = useState(false);
+  const [showNewBlock, setShowNewBlock]     = useState(false);
+  const [editBlockId, setEditBlockId]       = useState(null);
+  const [showManage, setShowManage]         = useState(false);
+
+  // New routine form
+  const [nrName,  setNrName]  = useState('');
+  const [nrColor, setNrColor] = useState('#5BA896');
+  const [nrDays,  setNrDays]  = useState([1,2,3,4,5]);
+
+  // Block form
+  const [bTitle,    setBTitle]    = useState('');
+  const [bIcon,     setBIcon]     = useState('⏰');
+  const [bStart,    setBStart]    = useState('07:00');
+  const [bDuration, setBDuration] = useState(30);
+  const [bColor,    setBColor]    = useState('#5BA896');
+
+  const td = todayKey();
+  const todayDow = new Date().getDay(); // 0=Sun
+
+  // Auto-select today's routine
+  useEffect(() => {
+    if (!activeRoutine && routines.length > 0) {
+      const todayR = routines.find(r => (r.days||[]).includes(todayDow));
+      setActiveRoutine(todayR?.id || routines[0].id);
+    }
+  }, [routines]);
+
+  const currentRoutine = routines.find(r => r.id === activeRoutine);
+  const currentBlocks  = blocks.filter(b => b.routine_id === activeRoutine)
+    .sort((a,b) => timeToMin(a.start_time) - timeToMin(b.start_time));
+
+  // Progress
+  const doneBlocks   = currentBlocks.filter(b => (logs[td]||[]).includes(b.id));
+  const progress     = currentBlocks.length > 0 ? Math.round(doneBlocks.length / currentBlocks.length * 100) : 0;
+
+  // Current block (what should be happening now)
+  const nowMin = new Date().getHours()*60 + new Date().getMinutes();
+  const nowBlock = currentBlocks.find(b => {
+    const start = timeToMin(b.start_time);
+    return nowMin >= start && nowMin < start + b.duration;
+  });
+
+  const saveRoutine = async () => {
+    if (!nrName.trim()) return;
+    await onAddRoutine(nrName.trim(), nrColor, nrDays);
+    setNrName(''); setNrColor('#5BA896'); setNrDays([1,2,3,4,5]);
+    setShowNewRoutine(false);
+  };
+
+  const saveBlock = async () => {
+    if (!bTitle.trim()) return;
+    const payload = { title:bTitle, icon:bIcon, start_time:bStart, duration:bDuration, color:bColor };
+    if (editBlockId) {
+      await onUpdateBlock(editBlockId, payload);
+      setEditBlockId(null);
+    } else {
+      await onAddBlock(activeRoutine, payload);
+    }
+    setBTitle(''); setBIcon('⏰'); setBStart('07:00'); setBDuration(30); setBColor('#5BA896');
+    setShowNewBlock(false);
+  };
+
+  const openEditBlock = b => {
+    setEditBlockId(b.id); setBTitle(b.title); setBIcon(b.icon||'⏰');
+    setBStart(b.start_time); setBDuration(b.duration); setBColor(b.color||'#5BA896');
+    setShowNewBlock(true);
+  };
+
+  return (
+    <div className="routine-page">
+      {/* ── ROUTINE TABS ── */}
+      <div className="routine-tabs-row">
+        <div className="routine-tabs">
+          {routines.map(r => (
+            <button key={r.id}
+              className={`routine-tab${activeRoutine===r.id?' active':''}`}
+              style={activeRoutine===r.id ? {'--rt-color': r.color} : {}}
+              onClick={()=>setActiveRoutine(r.id)}>
+              <span className="routine-tab-dot" style={{background: r.color}}/>
+              {r.name}
+              {/* today indicator */}
+              {(r.days||[]).includes(todayDow) && <span className="routine-tab-today">HOJE</span>}
+            </button>
+          ))}
+          <button className="routine-tab-add" onClick={()=>setShowNewRoutine(true)}>+ Nova</button>
+        </div>
+        {currentRoutine && (
+          <button className="routine-manage-btn" onClick={()=>setShowManage(true)}>⚙</button>
+        )}
+      </div>
+
+      {!currentRoutine ? (
+        <div className="empty fade" style={{paddingTop:60}}>
+          <div className="empty-ico">◷</div>
+          <div className="empty-h">Nenhuma rotina criada</div>
+          <div className="empty-s">Clique em "+ Nova" para começar</div>
+        </div>
+      ) : (
+        <>
+          {/* ── PROGRESS BAR ── */}
+          <div className="routine-progress-card fade">
+            <div className="routine-progress-info">
+              <div className="routine-progress-title">
+                {progress===100 ? '🎉 Rotina concluída!' : nowBlock ? `Agora: ${nowBlock.icon} ${nowBlock.title}` : `${currentRoutine.name}`}
+              </div>
+              <div className="routine-progress-sub">
+                {doneBlocks.length}/{currentBlocks.length} concluídos · {progress}%
+              </div>
+            </div>
+            <div className="routine-progress-bar-wrap">
+              <div className="routine-progress-bar-bg">
+                <div className="routine-progress-bar-fg" style={{width:`${progress}%`, background: currentRoutine.color}}/>
+              </div>
+              <div className="routine-days-row">
+                {DAYS_FULL.map((d,i) => (
+                  <div key={i} className={`routine-day-dot${(currentRoutine.days||[]).includes(i)?' active':''}${i===todayDow?' today':''}`}
+                    style={(currentRoutine.days||[]).includes(i)?{background:currentRoutine.color}:{}}>
+                    {d.slice(0,1)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ── TIMELINE ── */}
+          <div className="routine-timeline fade">
+            {currentBlocks.length === 0 ? (
+              <div className="routine-empty-blocks">
+                <div style={{fontSize:32,marginBottom:8}}>⏱</div>
+                <div style={{fontFamily:'var(--fm)',fontSize:11,color:'var(--t3)',letterSpacing:'.1em'}}>NENHUM BLOCO ADICIONADO</div>
+              </div>
+            ) : currentBlocks.map((b, i) => {
+              const done  = (logs[td]||[]).includes(b.id);
+              const isNow = nowBlock?.id === b.id;
+              const endMin = timeToMin(b.start_time) + b.duration;
+              return (
+                <div key={b.id} className={`rt-block${done?' done':''}${isNow?' now':''}`}>
+                  {/* Time column */}
+                  <div className="rt-time-col">
+                    <div className="rt-start">{fmtTime(b.start_time)}</div>
+                    {i < currentBlocks.length-1 && <div className="rt-line" style={{background:b.color+'40'}}/>}
+                  </div>
+                  {/* Block card */}
+                  <div className="rt-card" style={done?{borderColor:b.color+'50',background:b.color+'08'}:isNow?{borderColor:b.color+'80',boxShadow:`0 0 0 1px ${b.color}20`}:{}}>
+                    {isNow && <div className="rt-now-badge">AGORA</div>}
+                    <div className="rt-card-left">
+                      <div className="rt-icon" style={{background:b.color+'18',border:`1px solid ${b.color}30`}}>{b.icon||'⏰'}</div>
+                      <div className="rt-info">
+                        <div className="rt-title" style={done?{color:b.color}:{}}>{b.title}</div>
+                        <div className="rt-meta">{fmtTime(b.start_time)} → {fmtTime(minToTime(endMin))} · {fmtDuration(b.duration)}</div>
+                      </div>
+                    </div>
+                    <div className="rt-card-right">
+                      <button className="rt-edit-btn" onClick={()=>openEditBlock(b)} title="Editar">✎</button>
+                      <button className={`rt-check${done?' done':''}`}
+                        style={done?{background:b.color,borderColor:b.color}:{}}
+                        onClick={()=>onToggleBlock(b.id)}>
+                        {done?'✓':''}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {/* Add block button */}
+            <button className="rt-add-block" onClick={()=>{setEditBlockId(null);setBTitle('');setBIcon('⏰');setBStart(currentBlocks.length>0?minToTime(timeToMin(currentBlocks[currentBlocks.length-1].start_time)+currentBlocks[currentBlocks.length-1].duration):'07:00');setBDuration(30);setBColor(currentRoutine.color);setShowNewBlock(true);}}>
+              + Adicionar bloco
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ── NEW ROUTINE MODAL ── */}
+      {showNewRoutine && (
+        <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setShowNewRoutine(false);}}>
+          <div className="modal">
+            <div className="modal-h"><div className="acc-dot"/>Nova Rotina</div>
+            <label className="mlabel" style={{marginTop:0}}>NOME</label>
+            <input className="minput" placeholder="Ex: Manhã, Noturna, Fim de semana..." value={nrName} onChange={e=>setNrName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&saveRoutine()} autoFocus/>
+            <label className="mlabel">COR</label>
+            <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:4}}>
+              {BLOCK_COLORS.map(c=><button key={c} style={{width:26,height:26,borderRadius:5,background:c,border:`2px solid ${nrColor===c?'var(--t1)':'transparent'}`,cursor:'pointer',transition:'all .12s'}} onClick={()=>setNrColor(c)}/>)}
+            </div>
+            <label className="mlabel">DIAS ATIVOS</label>
+            <div style={{display:'flex',gap:6,marginBottom:4}}>
+              {DAYS_FULL.map((d,i)=>(
+                <button key={i} style={{width:34,height:34,borderRadius:'50%',border:`1px solid ${nrDays.includes(i)?nrColor:'var(--b2)'}`,background:nrDays.includes(i)?nrColor+'20':'transparent',color:nrDays.includes(i)?nrColor:'var(--t3)',fontSize:11,fontWeight:700,cursor:'pointer',transition:'all .15s',fontFamily:'var(--fm)'}}
+                  onClick={()=>setNrDays(nrDays.includes(i)?nrDays.filter(x=>x!==i):[...nrDays,i])}>
+                  {d.slice(0,1)}
+                </button>
+              ))}
+            </div>
+            <div className="modal-btns">
+              <button className="modal-save" onClick={saveRoutine}>CRIAR ROTINA</button>
+              <button className="modal-close" onClick={()=>setShowNewRoutine(false)}>CANCELAR</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── BLOCK MODAL ── */}
+      {showNewBlock && (
+        <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget){setShowNewBlock(false);setEditBlockId(null);}}}>
+          <div className="modal">
+            <div className="modal-h"><div className="acc-dot"/>{editBlockId?'Editar Bloco':'Novo Bloco'}</div>
+            <label className="mlabel" style={{marginTop:0}}>ATIVIDADE</label>
+            <input className="minput" placeholder="Ex: Meditação, Café, Exercício..." value={bTitle} onChange={e=>setBTitle(e.target.value)} autoFocus/>
+            <label className="mlabel">ÍCONE</label>
+            <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:4}}>
+              {BLOCK_ICONS.map(ic=><button key={ic} className={`icon-btn${bIcon===ic?' sel':''}`} onClick={()=>setBIcon(ic)}>{ic}</button>)}
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginTop:4}}>
+              <div>
+                <label className="mlabel">INÍCIO</label>
+                <input className="minput" type="time" value={bStart} onChange={e=>setBStart(e.target.value)} style={{colorScheme:'dark'}}/>
+              </div>
+              <div>
+                <label className="mlabel">DURAÇÃO</label>
+                <select className="mselect" value={bDuration} onChange={e=>setBDuration(Number(e.target.value))}>
+                  {[5,10,15,20,30,45,60,90,120,180].map(m=><option key={m} value={m}>{fmtDuration(m)}</option>)}
+                </select>
+              </div>
+            </div>
+            <label className="mlabel">COR</label>
+            <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:4}}>
+              {BLOCK_COLORS.map(c=><button key={c} style={{width:26,height:26,borderRadius:5,background:c,border:`2px solid ${bColor===c?'var(--t1)':'transparent'}`,cursor:'pointer',transition:'all .12s'}} onClick={()=>setBColor(c)}/>)}
+            </div>
+            <div className="modal-btns">
+              <button className="modal-save" onClick={saveBlock}>{editBlockId?'SALVAR':'ADICIONAR'}</button>
+              {editBlockId && <button className="btn-del" style={{padding:'12px 14px'}} onClick={async()=>{await onDeleteBlock(editBlockId);setEditBlockId(null);setShowNewBlock(false);}}>EXCLUIR</button>}
+              <button className="modal-close" onClick={()=>{setShowNewBlock(false);setEditBlockId(null);}}>CANCELAR</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MANAGE ROUTINE MODAL ── */}
+      {showManage && currentRoutine && (
+        <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setShowManage(false);}}>
+          <div className="modal">
+            <div className="modal-h"><div className="acc-dot"/>Editar Rotina</div>
+            <label className="mlabel" style={{marginTop:0}}>NOME</label>
+            <input className="minput" value={currentRoutine.name} onChange={e=>onUpdateRoutine(currentRoutine.id,{name:e.target.value})}/>
+            <label className="mlabel">COR</label>
+            <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:4}}>
+              {BLOCK_COLORS.map(c=><button key={c} style={{width:26,height:26,borderRadius:5,background:c,border:`2px solid ${currentRoutine.color===c?'var(--t1)':'transparent'}`,cursor:'pointer',transition:'all .12s'}} onClick={()=>onUpdateRoutine(currentRoutine.id,{color:c})}/>)}
+            </div>
+            <label className="mlabel">DIAS ATIVOS</label>
+            <div style={{display:'flex',gap:6,marginBottom:16}}>
+              {DAYS_FULL.map((d,i)=>{
+                const active=(currentRoutine.days||[]).includes(i);
+                return <button key={i} style={{width:34,height:34,borderRadius:'50%',border:`1px solid ${active?currentRoutine.color:'var(--b2)'}`,background:active?currentRoutine.color+'20':'transparent',color:active?currentRoutine.color:'var(--t3)',fontSize:11,fontWeight:700,cursor:'pointer',transition:'all .15s',fontFamily:'var(--fm)'}}
+                  onClick={()=>{const days=active?(currentRoutine.days||[]).filter(x=>x!==i):[...(currentRoutine.days||[]),i];onUpdateRoutine(currentRoutine.id,{days});}}>
+                  {d.slice(0,1)}
+                </button>;
+              })}
+            </div>
+            <div className="modal-btns">
+              <button className="modal-save" onClick={()=>setShowManage(false)}>FECHAR</button>
+              <button className="btn-del" style={{padding:'12px 14px'}} onClick={async()=>{await onDeleteRoutine(currentRoutine.id);setActiveRoutine(null);setShowManage(false);}}>EXCLUIR ROTINA</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
