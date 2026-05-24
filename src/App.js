@@ -168,7 +168,7 @@ function FlowApp({ session }) {
   const [dataReady, setDataReady] = useState(false);
 
   // ── UI state ────────────────────────────────────────
-  const [page,     setPage]     = useState('habits');
+  const [page,     setPage]     = useState('home');
   const [habTab,   setHabTab]   = useState('today');
   const [showAddHabit, setShowAddHabit] = useState(false);
   const [editHabitId,  setEditHabitId]  = useState(null);
@@ -554,6 +554,7 @@ function FlowApp({ session }) {
         <div className="sb-scroll">
           <div className="sb-section-label">Módulos</div>
           {[
+            {id:'home',    ico:'⌂', label:'Início',   badge:''},
             {id:'habits',  ico:'◎', label:'Hábitos',  badge:`${doneH}/${habits.length}`},
             {id:'kanban',  ico:'⊞', label:'Kanban',   badge:`${tasks.length} tarefas`},
             {id:'journal', ico:'✦', label:'Diário',   badge:`${entries.length} entradas`},
@@ -586,7 +587,7 @@ function FlowApp({ session }) {
 
       {/* ── MAIN ── */}
       <div className="main">
-      {page !== 'finance' && (
+      {page !== 'finance' && page !== 'home' && (
         <div className="mod-header">
           <div className="mod-eyebrow fade">
             {page==='habits' ? {today:'ACOMPANHAMENTO DIÁRIO',week:'VISÃO 7 DIAS',stats:'ANÁLISE DE DESEMPENHO',manage:'GERENCIAMENTO'}[habTab]
@@ -610,7 +611,16 @@ function FlowApp({ session }) {
         </div>
       )}
 
-        <div className={page==='finance' ? 'finance-fullbody' : 'mod-body'}>
+        <div className={page==='finance'||page==='home' ? 'finance-fullbody' : 'mod-body'}>
+          {page==='home' && (
+            <HomePage
+              habits={habits} logs={logs} tasks={tasks} kbCols={kbCols}
+              entries={entries} routines={routines} rBlocks={rBlocks} rLogs={rLogs}
+              fSheets={fSheets} fEntries={fEntries}
+              onNavigate={setPage}
+              userName={session.user.email?.split('@')[0]}
+            />
+          )}
           {page==='habits' && habTab==='today'  && <HabToday  habits={habits} logs={logs} td={td} onToggle={toggleHabit}/>}
           {page==='habits' && habTab==='week'   && <HabWeek   habits={habits} logs={logs} td={td} onToggle={toggleHabit}/>}
           {page==='habits' && habTab==='stats'  && <HabStats  habits={habits} logs={logs} td={td}/>}
@@ -655,7 +665,7 @@ function FlowApp({ session }) {
 
       {/* ── BOTTOM NAV ── */}
       <nav className="bnav">
-        {[{ico:'◎',label:'HÁBITOS',id:'habits'},{ico:'⊞',label:'KANBAN',id:'kanban'},{ico:'✦',label:'DIÁRIO',id:'journal'},{ico:'◷',label:'ROTINA',id:'routine'},{ico:'₢',label:'FINANÇAS',id:'finance'}].map(({ico,label,id})=>(
+        {[{ico:'⌂',label:'INÍCIO',id:'home'},{ico:'◎',label:'HÁBITOS',id:'habits'},{ico:'⊞',label:'KANBAN',id:'kanban'},{ico:'✦',label:'DIÁRIO',id:'journal'},{ico:'◷',label:'ROTINA',id:'routine'},{ico:'₢',label:'FINANÇAS',id:'finance'}].map(({ico,label,id})=>(
           <button key={id} className={page===id?'active':''} onClick={()=>setPage(id)}>
             <span className="bnav-ico">{ico}</span><span>{label}</span><div className="bnav-pip"/>
           </button>
@@ -2141,5 +2151,220 @@ function FinancePage({ sheets, entries, onAddSheet, onUpdateSheet, onDeleteSheet
         </div>
       )}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────
+// HOME PAGE — Dashboard
+// ─────────────────────────────────────────────────────
+function HomePage({ habits, logs, tasks, kbCols, entries, routines, rBlocks, rLogs, fSheets, fEntries, onNavigate, userName }) {
+  const td = todayKey();
+  const d  = new Date();
+  const todayDow = d.getDay();
+
+  // ── Habits stats ──
+  const doneToday  = (logs[td]||[]).length;
+  const habPct     = habits.length > 0 ? Math.round(doneToday/habits.length*100) : 0;
+  const l7         = lastN(7);
+  const perfectDays= l7.filter(day => habits.length > 0 && (logs[day]||[]).length === habits.length).length;
+
+  // ── Kanban stats ──
+  const totalTasks = tasks.length;
+  const doneTasks  = tasks.filter(t => {
+    const col = kbCols.find(c => c.id === t.col_id);
+    return col?.label?.toLowerCase().includes('conclu') || col?.label?.toLowerCase().includes('done');
+  }).length;
+  const urgentTasks = tasks.filter(t => t.reminder && new Date(t.reminder) > new Date() && new Date(t.reminder) - new Date() < 24*60*60*1000).length;
+
+  // ── Journal stats ──
+  const thisMonthEntries = entries.filter(e => e.entry_date?.startsWith(td.slice(0,7))).length;
+  const lastEntry = entries[0];
+
+  // ── Routine stats ──
+  const todayRoutine = routines.find(r => (r.days||[]).includes(todayDow));
+  const todayBlocks  = todayRoutine ? rBlocks.filter(b => b.routine_id === todayRoutine.id) : [];
+  const doneBlocks   = todayBlocks.filter(b => (rLogs[td]||[]).includes(b.id));
+  const routinePct   = todayBlocks.length > 0 ? Math.round(doneBlocks.length/todayBlocks.length*100) : 0;
+  const nowMin       = d.getHours()*60 + d.getMinutes();
+  const nowBlock     = todayBlocks.find(b => {
+    const s = b.start_time?.split(':').map(Number);
+    if (!s) return false;
+    const start = s[0]*60+s[1];
+    return nowMin >= start && nowMin < start + b.duration;
+  });
+
+  // ── Finance stats ──
+  const incomeSheet   = fSheets.find(s=>s.type==='income');
+  const totalIncome   = fEntries.filter(e=>e.sheet_id===incomeSheet?.id).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const expSheets     = fSheets.filter(s=>s.type!=='income');
+  const totalExpenses = fEntries.filter(e=>expSheets.find(s=>s.id===e.sheet_id)).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const balance       = totalIncome - totalExpenses;
+
+  // ── Greetings ──
+  const hour = d.getHours();
+  const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  const dayNames = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  const months   = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+  return (
+    <div className="home-page">
+      {/* ── HEADER ── */}
+      <div className="home-header">
+        <div>
+          <div className="home-greeting">{greeting}, <span className="home-name">{userName}</span></div>
+          <div className="home-date">{dayNames[todayDow]}, {d.getDate()} de {months[d.getMonth()]} de {d.getFullYear()}</div>
+        </div>
+        <img src="/logo192.png" alt="Mnemos" className="home-logo"/>
+      </div>
+
+      {/* ── BENTO GRID ── */}
+      <div className="home-bento">
+
+        {/* ─ Hábitos ─ */}
+        <div className="home-card home-card-habits" onClick={()=>onNavigate('habits')}>
+          <div className="home-card-header">
+            <div className="home-card-ico">◎</div>
+            <div className="home-card-title">Hábitos</div>
+            <div className="home-card-arrow">→</div>
+          </div>
+          <div className="home-card-main">
+            <div className="home-ring-wrap">
+              <HomeRing pct={habPct} color="var(--acc)"/>
+              <div className="home-ring-center">
+                <div className="home-ring-pct">{habPct}%</div>
+              </div>
+            </div>
+            <div className="home-card-stats">
+              <div className="home-stat"><span className="home-stat-v">{doneToday}/{habits.length}</span><span className="home-stat-l">hoje</span></div>
+              <div className="home-stat"><span className="home-stat-v">{perfectDays}/7</span><span className="home-stat-l">dias perfeitos</span></div>
+            </div>
+          </div>
+          {habPct === 100 && <div className="home-card-badge done">🎉 Completo!</div>}
+          {habPct > 0 && habPct < 100 && <div className="home-card-badge">Em andamento</div>}
+        </div>
+
+        {/* ─ Rotina ─ */}
+        <div className="home-card home-card-routine" onClick={()=>onNavigate('routine')}>
+          <div className="home-card-header">
+            <div className="home-card-ico">◷</div>
+            <div className="home-card-title">Rotina</div>
+            <div className="home-card-arrow">→</div>
+          </div>
+          {todayRoutine ? (
+            <>
+              <div className="home-routine-name">{todayRoutine.name}</div>
+              {nowBlock && (
+                <div className="home-routine-now">
+                  <span className="home-routine-now-badge">AGORA</span>
+                  <span>{nowBlock.icon} {nowBlock.title}</span>
+                </div>
+              )}
+              <div className="home-progress-bar-wrap">
+                <div className="home-progress-bar-bg">
+                  <div className="home-progress-bar-fg" style={{width:`${routinePct}%`, background: todayRoutine.color||'var(--acc)'}}/>
+                </div>
+                <span className="home-progress-label">{doneBlocks.length}/{todayBlocks.length} blocos</span>
+              </div>
+            </>
+          ) : (
+            <div className="home-card-empty">Nenhuma rotina para hoje</div>
+          )}
+        </div>
+
+        {/* ─ Kanban ─ */}
+        <div className="home-card home-card-kanban" onClick={()=>onNavigate('kanban')}>
+          <div className="home-card-header">
+            <div className="home-card-ico">⊞</div>
+            <div className="home-card-title">Kanban</div>
+            <div className="home-card-arrow">→</div>
+          </div>
+          <div className="home-card-stats" style={{marginTop:12}}>
+            <div className="home-stat"><span className="home-stat-v">{totalTasks}</span><span className="home-stat-l">tarefas</span></div>
+            <div className="home-stat"><span className="home-stat-v">{doneTasks}</span><span className="home-stat-l">concluídas</span></div>
+            {urgentTasks > 0 && <div className="home-stat urgent"><span className="home-stat-v">{urgentTasks}</span><span className="home-stat-l">urgentes</span></div>}
+          </div>
+          {/* Mini column bars */}
+          <div className="home-kb-cols">
+            {kbCols.map(col => {
+              const n = tasks.filter(t=>t.col_id===col.id).length;
+              return (
+                <div key={col.id} className="home-kb-col">
+                  <div className="home-kb-col-bar-bg">
+                    <div className="home-kb-col-bar-fg" style={{height:`${totalTasks>0?Math.round(n/totalTasks*100):0}%`}}/>
+                  </div>
+                  <div className="home-kb-col-label">{col.label.slice(0,4)}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ─ Diário ─ */}
+        <div className="home-card home-card-journal" onClick={()=>onNavigate('journal')}>
+          <div className="home-card-header">
+            <div className="home-card-ico">✦</div>
+            <div className="home-card-title">Diário</div>
+            <div className="home-card-arrow">→</div>
+          </div>
+          <div className="home-card-stats" style={{marginTop:12}}>
+            <div className="home-stat"><span className="home-stat-v">{entries.length}</span><span className="home-stat-l">entradas</span></div>
+            <div className="home-stat"><span className="home-stat-v">{thisMonthEntries}</span><span className="home-stat-l">este mês</span></div>
+          </div>
+          {lastEntry && (
+            <div className="home-last-entry">
+              <div className="home-last-entry-date">{lastEntry.entry_date}</div>
+              <div className="home-last-entry-title">{lastEntry.title||'Sem título'}</div>
+              <div className="home-last-entry-preview">{lastEntry.body?.slice(0,60)||'—'}</div>
+            </div>
+          )}
+          {!lastEntry && <div className="home-card-empty">Nenhuma entrada ainda</div>}
+        </div>
+
+        {/* ─ Finanças ─ */}
+        <div className="home-card home-card-finance" onClick={()=>onNavigate('finance')}>
+          <div className="home-card-header">
+            <div className="home-card-ico">₢</div>
+            <div className="home-card-title">Finanças</div>
+            <div className="home-card-arrow">→</div>
+          </div>
+          <div className="home-fin-row">
+            <div className="home-fin-item income">
+              <div className="home-fin-label">Receitas</div>
+              <div className="home-fin-value">{fmtBRL(totalIncome)}</div>
+            </div>
+            <div className="home-fin-item expense">
+              <div className="home-fin-label">Despesas</div>
+              <div className="home-fin-value">{fmtBRL(totalExpenses)}</div>
+            </div>
+            <div className={`home-fin-item ${balance>=0?'income':'expense'}`}>
+              <div className="home-fin-label">Saldo</div>
+              <div className="home-fin-value">{fmtBRL(balance)}</div>
+            </div>
+          </div>
+          {/* Mini balance bar */}
+          <div className="home-balance-bar">
+            <div className="home-balance-bar-fill" style={{
+              width: totalIncome > 0 ? `${Math.min(100, totalExpenses/totalIncome*100)}%` : '0%',
+              background: balance >= 0 ? 'var(--acc)' : 'var(--red)',
+            }}/>
+          </div>
+          <div className="home-balance-label">{totalIncome > 0 ? `${Math.round(totalExpenses/totalIncome*100)}% da receita comprometida` : 'Sem dados'}</div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+// ── Home Ring ────────────────────────────────────────
+function HomeRing({ pct, color, size=64 }) {
+  const r = size/2-5, c = 2*Math.PI*r, off = c-(pct/100)*c;
+  return (
+    <svg width={size} height={size} style={{transform:'rotate(-90deg)',display:'block',flexShrink:0}}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--b2)" strokeWidth="5"/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth="5"
+        strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round"
+        style={{transition:'stroke-dashoffset .6s ease'}}/>
+    </svg>
   );
 }
