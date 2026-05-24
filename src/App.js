@@ -163,9 +163,8 @@ function FlowApp({ session }) {
   const [routines, setRoutines] = useState([]);
   const [rBlocks,  setRBlocks]  = useState([]);
   const [rLogs,    setRLogs]    = useState({});  // { dateKey: [blockId,...] }
-  const [cBoards,  setCBoards]  = useState([]);
-  const [cNodes,   setCNodes]   = useState([]);
-  const [cEdges,   setCEdges]   = useState([]);
+  const [fSheets,  setFSheets]  = useState([]);
+  const [fEntries, setFEntries] = useState([]);
   const [dataReady, setDataReady] = useState(false);
 
   // ── UI state ────────────────────────────────────────
@@ -195,7 +194,7 @@ function FlowApp({ session }) {
   // ── Load all data ────────────────────────────────────
   useEffect(() => {
     async function load() {
-      const [hRes, lRes, cRes, tgRes, tkRes, jRes, rtRes, rbRes, rlRes, cbRes, cnRes, ceRes] = await Promise.all([
+      const [hRes, lRes, cRes, tgRes, tkRes, jRes, rtRes, rbRes, rlRes, fsRes, feRes] = await Promise.all([
         supabase.from('habits').select('*').eq('user_id', uid).order('created_at'),
         supabase.from('habit_logs').select('*').eq('user_id', uid),
         supabase.from('kb_cols').select('*').eq('user_id', uid).order('position'),
@@ -205,9 +204,8 @@ function FlowApp({ session }) {
         supabase.from('routines').select('*').eq('user_id', uid).order('position'),
         supabase.from('routine_blocks').select('*').eq('user_id', uid).order('start_time'),
         supabase.from('routine_logs').select('*').eq('user_id', uid),
-        supabase.from('canvas_boards').select('*').eq('user_id', uid).order('created_at'),
-        supabase.from('canvas_nodes').select('*').eq('user_id', uid),
-        supabase.from('canvas_edges').select('*').eq('user_id', uid),
+        supabase.from('finance_sheets').select('*').eq('user_id', uid).order('position'),
+        supabase.from('finance_entries').select('*').eq('user_id', uid).order('position'),
       ]);
 
       setHabits(hRes.data || []);
@@ -249,9 +247,21 @@ function FlowApp({ session }) {
         rlogsMap[l.date].push(l.block_id);
       });
       setRLogs(rlogsMap);
-      setCBoards(cbRes.data || []);
-      setCNodes(cnRes.data || []);
-      setCEdges(ceRes.data || []);
+
+      // Finance — seed default sheets if none
+      let sheets = fsRes.data || [];
+      if (sheets.length === 0) {
+        const defaults = [
+          { user_id: uid, name: 'Despesas',   type: 'expense',      position: 0 },
+          { user_id: uid, name: 'Receitas',   type: 'income',       position: 1 },
+          { user_id: uid, name: 'Fixos',      type: 'fixed',        position: 2 },
+        ];
+        const { data } = await supabase.from('finance_sheets').insert(defaults).select();
+        sheets = data || [];
+      }
+      setFSheets(sheets);
+      setFEntries(feRes.data || []);
+
       if (cols.length > 0) setTCol(cols[0].id);
       setDataReady(true);
     }
@@ -461,53 +471,42 @@ function FlowApp({ session }) {
     }
   }, [rLogs, uid]);
 
-  // ── CANVAS ACTIONS ───────────────────────────────────
-  const addBoard = useCallback(async (name) => {
-    const { data } = await supabase.from('canvas_boards').insert({ user_id: uid, name }).select().single();
-    if (data) setCBoards(prev => [...prev, data]);
+  // ── FINANCE ACTIONS ──────────────────────────────────
+  const addFEntry = useCallback(async (sheetId, entry) => {
+    const pos = fEntries.filter(e => e.sheet_id === sheetId).length;
+    const { data } = await supabase.from('finance_entries')
+      .insert({ user_id: uid, sheet_id: sheetId, ...entry, position: pos }).select().single();
+    if (data) setFEntries(prev => [...prev, data]);
     return data;
-  }, [uid]);
+  }, [fEntries, uid]);
 
-  const updateBoard = useCallback(async (id, patch) => {
-    setCBoards(prev => prev.map(b => b.id === id ? {...b, ...patch} : b));
-    await supabase.from('canvas_boards').update(patch).eq('id', id);
+  const updateFEntry = useCallback(async (id, patch) => {
+    setFEntries(prev => prev.map(e => e.id === id ? {...e, ...patch} : e));
+    await supabase.from('finance_entries').update(patch).eq('id', id);
   }, []);
 
-  const deleteBoard = useCallback(async id => {
-    setCBoards(prev => prev.filter(b => b.id !== id));
-    setCNodes(prev => prev.filter(n => n.board_id !== id));
-    setCEdges(prev => prev.filter(e => e.board_id !== id));
-    await supabase.from('canvas_boards').delete().eq('id', id);
+  const deleteFEntry = useCallback(async id => {
+    setFEntries(prev => prev.filter(e => e.id !== id));
+    await supabase.from('finance_entries').delete().eq('id', id);
   }, []);
 
-  const addNode = useCallback(async (boardId, node) => {
-    const { data } = await supabase.from('canvas_nodes').insert({ user_id: uid, board_id: boardId, ...node }).select().single();
-    if (data) setCNodes(prev => [...prev, data]);
+  const addFSheet = useCallback(async (name, type) => {
+    const pos = fSheets.length;
+    const { data } = await supabase.from('finance_sheets')
+      .insert({ user_id: uid, name, type, position: pos }).select().single();
+    if (data) setFSheets(prev => [...prev, data]);
     return data;
-  }, [uid]);
+  }, [fSheets, uid]);
 
-  const updateNode = useCallback(async (id, patch) => {
-    setCNodes(prev => prev.map(n => n.id === id ? {...n, ...patch} : n));
-    await supabase.from('canvas_nodes').update(patch).eq('id', id);
+  const updateFSheet = useCallback(async (id, patch) => {
+    setFSheets(prev => prev.map(s => s.id === id ? {...s, ...patch} : s));
+    await supabase.from('finance_sheets').update(patch).eq('id', id);
   }, []);
 
-  const deleteNode = useCallback(async id => {
-    setCNodes(prev => prev.filter(n => n.id !== id));
-    setCEdges(prev => prev.filter(e => e.from_node !== id && e.to_node !== id));
-    await supabase.from('canvas_nodes').delete().eq('id', id);
-    await supabase.from('canvas_edges').delete().or(`from_node.eq.${id},to_node.eq.${id}`);
-  }, []);
-
-  const addEdge = useCallback(async (boardId, fromNode, toNode) => {
-    const exists = cEdges.find(e => e.from_node === fromNode && e.to_node === toNode);
-    if (exists) return;
-    const { data } = await supabase.from('canvas_edges').insert({ user_id: uid, board_id: boardId, from_node: fromNode, to_node: toNode }).select().single();
-    if (data) setCEdges(prev => [...prev, data]);
-  }, [cEdges, uid]);
-
-  const deleteEdge = useCallback(async id => {
-    setCEdges(prev => prev.filter(e => e.id !== id));
-    await supabase.from('canvas_edges').delete().eq('id', id);
+  const deleteFSheet = useCallback(async id => {
+    setFSheets(prev => prev.filter(s => s.id !== id));
+    setFEntries(prev => prev.filter(e => e.sheet_id !== id));
+    await supabase.from('finance_sheets').delete().eq('id', id);
   }, []);
 
   // ── JOURNAL ACTIONS ──────────────────────────────────
@@ -555,11 +554,11 @@ function FlowApp({ session }) {
         <div className="sb-scroll">
           <div className="sb-section-label">Módulos</div>
           {[
-            {id:'habits',  ico:'◎', label:'Hábitos', badge:`${doneH}/${habits.length}`},
-            {id:'kanban',  ico:'⊞', label:'Kanban',  badge:`${tasks.length} tarefas`},
-            {id:'journal', ico:'✦', label:'Diário',  badge:`${entries.length} entradas`},
-            {id:'routine', ico:'◷', label:'Rotina',  badge:`${routines.length} rotinas`},
-            {id:'canvas',  ico:'⬡', label:'Canvas',  badge:`${cBoards.length} quadros`},
+            {id:'habits',  ico:'◎', label:'Hábitos',  badge:`${doneH}/${habits.length}`},
+            {id:'kanban',  ico:'⊞', label:'Kanban',   badge:`${tasks.length} tarefas`},
+            {id:'journal', ico:'✦', label:'Diário',   badge:`${entries.length} entradas`},
+            {id:'routine', ico:'◷', label:'Rotina',   badge:`${routines.length} rotinas`},
+            {id:'finance', ico:'₢', label:'Finanças', badge:`${fSheets.length} planilhas`},
           ].map(({id,ico,label,badge}) => (
             <button key={id} className={`sb-item ${page===id?'active':''}`} onClick={()=>setPage(id)}>
               <div className="sb-item-bar"/>
@@ -587,21 +586,19 @@ function FlowApp({ session }) {
 
       {/* ── MAIN ── */}
       <div className="main">
-        {page !== 'canvas' && (
+      {page !== 'finance' && (
         <div className="mod-header">
           <div className="mod-eyebrow fade">
             {page==='habits' ? {today:'ACOMPANHAMENTO DIÁRIO',week:'VISÃO 7 DIAS',stats:'ANÁLISE DE DESEMPENHO',manage:'GERENCIAMENTO'}[habTab]
             : page==='kanban'  ? 'GESTÃO DE TAREFAS'
             : page==='journal' ? 'REFLEXÕES & ANOTAÇÕES'
-            : page==='routine' ? 'PLANEJAMENTO DO DIA'
-            : 'SEGUNDO CÉREBRO'}
+            : 'PLANEJAMENTO DO DIA'}
           </div>
           <div className="mod-title fade" dangerouslySetInnerHTML={{__html:
             page==='habits' ? {today:'Hábitos <span class="hi">de Hoje</span>',week:'Visão <span class="hi">Semanal</span>',stats:'Análise <span class="hi">de Dados</span>',manage:'Meus <span class="hi">Hábitos</span>'}[habTab]
             : page==='kanban'  ? 'Quadro <span class="hi">Kanban</span>'
             : page==='journal' ? 'Meu <span class="hi">Diário</span>'
-            : page==='routine' ? 'Minha <span class="hi">Rotina</span>'
-            : 'Meu <span class="hi">Canvas</span>'
+            : 'Minha <span class="hi">Rotina</span>'
           }}/>
           {page==='habits' && (
             <div className="sub-tabs">
@@ -611,9 +608,9 @@ function FlowApp({ session }) {
             </div>
           )}
         </div>
-        )}
+      )}
 
-        <div className={page==='canvas' ? 'canvas-fullbody' : 'mod-body'}>
+        <div className={page==='finance' ? 'finance-fullbody' : 'mod-body'}>
           {page==='habits' && habTab==='today'  && <HabToday  habits={habits} logs={logs} td={td} onToggle={toggleHabit}/>}
           {page==='habits' && habTab==='week'   && <HabWeek   habits={habits} logs={logs} td={td} onToggle={toggleHabit}/>}
           {page==='habits' && habTab==='stats'  && <HabStats  habits={habits} logs={logs} td={td}/>}
@@ -646,12 +643,11 @@ function FlowApp({ session }) {
               onToggleBlock={toggleBlock}
             />
           )}
-          {page==='canvas' && (
-            <CanvasPage
-              boards={cBoards} nodes={cNodes} edges={cEdges}
-              onAddBoard={addBoard} onUpdateBoard={updateBoard} onDeleteBoard={deleteBoard}
-              onAddNode={addNode} onUpdateNode={updateNode} onDeleteNode={deleteNode}
-              onAddEdge={addEdge} onDeleteEdge={deleteEdge}
+          {page==='finance' && (
+            <FinancePage
+              sheets={fSheets} entries={fEntries}
+              onAddSheet={addFSheet} onUpdateSheet={updateFSheet} onDeleteSheet={deleteFSheet}
+              onAddEntry={addFEntry} onUpdateEntry={updateFEntry} onDeleteEntry={deleteFEntry}
             />
           )}
         </div>
@@ -659,7 +655,7 @@ function FlowApp({ session }) {
 
       {/* ── BOTTOM NAV ── */}
       <nav className="bnav">
-        {[{ico:'◎',label:'HÁBITOS',id:'habits'},{ico:'⊞',label:'KANBAN',id:'kanban'},{ico:'✦',label:'DIÁRIO',id:'journal'},{ico:'◷',label:'ROTINA',id:'routine'},{ico:'⬡',label:'CANVAS',id:'canvas'}].map(({ico,label,id})=>(
+        {[{ico:'◎',label:'HÁBITOS',id:'habits'},{ico:'⊞',label:'KANBAN',id:'kanban'},{ico:'✦',label:'DIÁRIO',id:'journal'},{ico:'◷',label:'ROTINA',id:'routine'},{ico:'₢',label:'FINANÇAS',id:'finance'}].map(({ico,label,id})=>(
           <button key={id} className={page===id?'active':''} onClick={()=>setPage(id)}>
             <span className="bnav-ico">{ico}</span><span>{label}</span><div className="bnav-pip"/>
           </button>
@@ -1792,374 +1788,299 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
   );
 }
 
+
 // ─────────────────────────────────────────────────────
-// CANVAS PAGE — Segundo Cérebro
+// FINANCE PAGE
 // ─────────────────────────────────────────────────────
-const NODE_COLORS = ['#1E2222','#1A2533','#221A2C','#2C1A1A','#1A2C1A','#2C2A1A'];
-const NODE_COLORS_LIGHT = ['#FFFFFF','#EEF4FF','#F5EEFF','#FFEEEE','#EEFFEE','#FFFAEE'];
+const BANKS   = ['Itaú','Nubank','Bradesco','Santander','C6','Inter','PicPay','Caixa','BTG','XP','Outro'];
+const METHODS = ['PIX','Débito','Crédito','Boleto','TED','Dinheiro'];
+const TAGS_FIN = ['Moradia','Alimentação','Transporte','Saúde','Lazer','Educação','Assinaturas','Investimentos','Contas','Pessoal','Trabalho','Outro'];
 
-function CanvasPage({ boards, nodes, edges, onAddBoard, onUpdateBoard, onDeleteBoard, onAddNode, onUpdateNode, onDeleteNode, onAddEdge, onDeleteEdge }) {
-  const [activeBoard, setActiveBoard] = useState(null);
-  const [showBoardModal, setShowBoardModal] = useState(false);
-  const [boardName, setBoardName] = useState('');
-  const [editBoardId, setEditBoardId] = useState(null);
+const fmtBRL = v => {
+  const n = parseFloat(v)||0;
+  return n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+};
 
-  // Canvas state
-  const [pan, setPan]         = useState({ x: 0, y: 0 });
-  const [zoom, setZoom]       = useState(1);
-  const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart]   = useState(null);
-  const [connecting, setConnecting] = useState(null); // nodeId being connected from
-  const [selectedNode, setSelectedNode] = useState(null);
-  const [editingNode, setEditingNode]   = useState(null);
-  const canvasRef = useRef(null);
-  const theme = document.documentElement.getAttribute('data-theme');
+const installmentLabel = (done, total) => {
+  if (!total) return null;
+  const left = total - done;
+  return `${done}/${total} — ${left} restante${left!==1?'s':''}`;
+};
+
+function FinancePage({ sheets, entries, onAddSheet, onUpdateSheet, onDeleteSheet, onAddEntry, onUpdateEntry, onDeleteEntry }) {
+  const [activeSheet, setActiveSheet] = useState(null);
+  const [showEntryModal, setShowEntryModal] = useState(false);
+  const [editEntryId, setEditEntryId]       = useState(null);
+  const [showSheetModal, setShowSheetModal] = useState(false);
+  const [editSheetId, setEditSheetId]       = useState(null);
+  const [sheetName, setSheetName]           = useState('');
+  const [sheetType, setSheetType]           = useState('expense');
+
+  // Entry form state
+  const [eName,    setEName]    = useState('');
+  const [eAmount,  setEAmount]  = useState('');
+  const [eTag,     setETag]     = useState('');
+  const [eBank,    setEBank]    = useState('');
+  const [eMethod,  setEMethod]  = useState('');
+  const [eDueDay,  setEDueDay]  = useState('');
+  const [eInstTotal, setEInstTotal] = useState('');
+  const [eInstDone,  setEInstDone]  = useState('');
+  const [eNotes,   setENotes]   = useState('');
+  const [saving,   setSaving]   = useState(false);
 
   useEffect(() => {
-    if (!activeBoard && boards.length > 0) setActiveBoard(boards[0].id);
-  }, [boards]);
+    if (!activeSheet && sheets.length > 0) setActiveSheet(sheets[0].id);
+  }, [sheets]);
 
-  const boardNodes = nodes.filter(n => n.board_id === activeBoard);
-  const boardEdges = edges.filter(e => e.board_id === activeBoard);
+  const currentSheet   = sheets.find(s => s.id === activeSheet);
+  const currentEntries = entries.filter(e => e.sheet_id === activeSheet)
+    .sort((a,b) => a.position - b.position);
 
-  // ── Board actions ──
-  const saveBoard = async () => {
-    if (!boardName.trim()) return;
-    if (editBoardId) {
-      await onUpdateBoard(editBoardId, { name: boardName });
-      setEditBoardId(null);
-    } else {
-      const b = await onAddBoard(boardName.trim());
-      if (b) setActiveBoard(b.id);
-    }
-    setBoardName(''); setShowBoardModal(false);
+  // Summary stats
+  const totalAll    = entries.reduce((s,e) => s + (parseFloat(e.amount)||0), 0);
+  const totalSheet  = currentEntries.reduce((s,e) => s + (parseFloat(e.amount)||0), 0);
+  const paidSheet   = currentEntries.filter(e=>e.paid).reduce((s,e) => s + (parseFloat(e.amount)||0), 0);
+  const unpaidSheet = totalSheet - paidSheet;
+
+  // Income sheet total
+  const incomeSheet  = sheets.find(s=>s.type==='income');
+  const totalIncome  = entries.filter(e=>e.sheet_id===incomeSheet?.id).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const expenseSheets = sheets.filter(s=>s.type!=='income');
+  const totalExpenses = entries.filter(e=>expenseSheets.find(s=>s.id===e.sheet_id)).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const balance = totalIncome - totalExpenses;
+
+  const openNewEntry = () => {
+    setEditEntryId(null); setEName(''); setEAmount(''); setETag('');
+    setEBank(''); setEMethod(''); setEDueDay(''); setEInstTotal(''); setEInstDone(''); setENotes('');
+    setShowEntryModal(true);
   };
-
-  // ── Node actions ──
-  const addNote = async () => {
-    const cx = (-pan.x + window.innerWidth/2) / zoom - 120;
-    const cy = (-pan.y + 200) / zoom;
-    await onAddNode(activeBoard, { type:'note', content:'Nova nota', x:cx, y:cy, width:240, height:160, color: theme==='light'?'#FFFFFF':'#1E2222' });
+  const openEditEntry = e => {
+    setEditEntryId(e.id); setEName(e.name); setEAmount(String(e.amount||''));
+    setETag(e.tag||''); setEBank(e.bank||''); setEMethod(e.method||'');
+    setEDueDay(String(e.due_day||'')); setEInstTotal(String(e.installments_total||''));
+    setEInstDone(String(e.installments_done||'')); setENotes(e.notes||'');
+    setShowEntryModal(true);
   };
-
-  const addImage = () => {
-    const input = document.createElement('input');
-    input.type = 'file'; input.accept = 'image/*';
-    input.onchange = async e => {
-      const file = e.target.files?.[0]; if (!file) return;
-      if (file.size > 3*1024*1024) { alert('Imagem muito grande. Use menos de 3MB.'); return; }
-      const reader = new FileReader();
-      reader.onload = async ev => {
-        const cx = (-pan.x + window.innerWidth/2) / zoom - 120;
-        const cy = (-pan.y + 200) / zoom;
-        await onAddNode(activeBoard, { type:'image', content:ev.target.result, x:cx, y:cy, width:240, height:180, color:'transparent' });
-      };
-      reader.readAsDataURL(file);
+  const saveEntry = async () => {
+    if (!eName.trim()) return;
+    setSaving(true);
+    const payload = {
+      name: eName, amount: parseFloat(eAmount)||0, tag: eTag, bank: eBank,
+      method: eMethod, due_day: parseInt(eDueDay)||null,
+      installments_total: parseInt(eInstTotal)||null,
+      installments_done: parseInt(eInstDone)||0,
+      notes: eNotes,
     };
-    input.click();
+    if (editEntryId) await onUpdateEntry(editEntryId, payload);
+    else await onAddEntry(activeSheet, payload);
+    setShowEntryModal(false); setEditEntryId(null); setSaving(false);
   };
 
-  const addLink = async () => {
-    const url = prompt('Cole a URL (YouTube, site, etc):');
-    if (!url) return;
-    const cx = (-pan.x + window.innerWidth/2) / zoom - 120;
-    const cy = (-pan.y + 200) / zoom;
-    await onAddNode(activeBoard, { type:'link', content:url, x:cx, y:cy, width:240, height:80, color: theme==='light'?'#EEF4FF':'#1A2533' });
+  const saveSheet = async () => {
+    if (!sheetName.trim()) return;
+    if (editSheetId) await onUpdateSheet(editSheetId, { name: sheetName });
+    else await onAddSheet(sheetName, sheetType);
+    setShowSheetModal(false); setEditSheetId(null); setSheetName('');
   };
-
-  // ── Drag node ──
-  const dragNode = useRef(null);
-  const startDrag = (e, node) => {
-    if (e.button !== 0) return;
-    if (connecting) { handleConnectTo(node.id); return; }
-    e.stopPropagation();
-    setSelectedNode(node.id);
-    const startX = e.clientX, startY = e.clientY;
-    const origX = node.x, origY = node.y;
-    const onMove = ev => {
-      const dx = (ev.clientX - startX) / zoom;
-      const dy = (ev.clientY - startY) / zoom;
-      onUpdateNode(node.id, { x: origX + dx, y: origY + dy });
-    };
-    const onUp = async ev => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      const dx = (ev.clientX - startX) / zoom;
-      const dy = (ev.clientY - startY) / zoom;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-        await onUpdateNode(node.id, { x: origX + dx, y: origY + dy });
-      }
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
-
-  // ── Resize node ──
-  const startResize = (e, node) => {
-    e.stopPropagation(); e.preventDefault();
-    const startX = e.clientX, startY = e.clientY;
-    const origW = node.width, origH = node.height;
-    const onMove = ev => {
-      const dw = (ev.clientX - startX) / zoom;
-      const dh = (ev.clientY - startY) / zoom;
-      onUpdateNode(node.id, { width: Math.max(120, origW + dw), height: Math.max(60, origH + dh) });
-    };
-    const onUp = async ev => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      const dw = (ev.clientX - startX) / zoom;
-      const dh = (ev.clientY - startY) / zoom;
-      await onUpdateNode(node.id, { width: Math.max(120, origW + dw), height: Math.max(60, origH + dh) });
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
-
-  // ── Pan canvas ──
-  const startPan = e => {
-    if (e.button !== 0 || connecting) return;
-    if (e.target === canvasRef.current || e.target.classList.contains('canvas-bg')) {
-      setSelectedNode(null);
-      setIsPanning(true);
-      setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-    }
-  };
-  useEffect(() => {
-    const onMove = e => { if (isPanning && panStart) setPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y }); };
-    const onUp   = () => setIsPanning(false);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-  }, [isPanning, panStart]);
-
-  // ── Zoom ──
-  const onWheel = e => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setZoom(z => Math.min(3, Math.max(0.2, z * delta)));
-  };
-  useEffect(() => {
-    const el = canvasRef.current;
-    if (!el) return;
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, []);
-
-  // ── Connect nodes ──
-  const handleConnectTo = async toId => {
-    if (connecting && toId !== connecting) {
-      await onAddEdge(activeBoard, connecting, toId);
-    }
-    setConnecting(null);
-  };
-
-  // ── Edge midpoint for delete button ──
-  const edgeMidpoint = (fromNode, toNode) => {
-    if (!fromNode || !toNode) return null;
-    const fx = fromNode.x + fromNode.width/2;
-    const fy = fromNode.y + fromNode.height/2;
-    const tx = toNode.x + toNode.width/2;
-    const ty = toNode.y + toNode.height/2;
-    return { x: (fx+tx)/2, y: (fy+ty)/2 };
-  };
-
-  if (!activeBoard && boards.length === 0) return (
-    <div className="canvas-empty">
-      <div style={{fontSize:48,marginBottom:16}}>⬡</div>
-      <div className="canvas-empty-h">Nenhum quadro criado</div>
-      <button className="canvas-new-board-btn" onClick={()=>setShowBoardModal(true)}>+ Criar primeiro quadro</button>
-      {showBoardModal && <BoardModal name={boardName} setName={setBoardName} onSave={saveBoard} onClose={()=>setShowBoardModal(false)}/>}
-    </div>
-  );
 
   return (
-    <div className="canvas-root" ref={canvasRef} onMouseDown={startPan}
-      style={{cursor: isPanning ? 'grabbing' : connecting ? 'crosshair' : 'default'}}>
+    <div className="finance-page">
+      {/* ── TOP SUMMARY BAR ── */}
+      <div className="fin-summary-bar fade">
+        <div className="fin-summary-card">
+          <div className="fin-summary-label">RECEITAS</div>
+          <div className="fin-summary-value income">{fmtBRL(totalIncome)}</div>
+        </div>
+        <div className="fin-summary-card">
+          <div className="fin-summary-label">DESPESAS</div>
+          <div className="fin-summary-value expense">{fmtBRL(totalExpenses)}</div>
+        </div>
+        <div className="fin-summary-card">
+          <div className="fin-summary-label">SALDO</div>
+          <div className={`fin-summary-value ${balance>=0?'income':'expense'}`}>{fmtBRL(balance)}</div>
+        </div>
+        <div className="fin-summary-card">
+          <div className="fin-summary-label">A PAGAR</div>
+          <div className="fin-summary-value">{fmtBRL(unpaidSheet)}</div>
+        </div>
+      </div>
 
-      {/* ── TOOLBAR ── */}
-      <div className="canvas-toolbar" onMouseDown={e=>e.stopPropagation()}>
-        {/* Board tabs */}
-        <div className="canvas-board-tabs">
-          {boards.map(b => (
-            <button key={b.id}
-              className={`canvas-board-tab${activeBoard===b.id?' active':''}`}
-              onClick={()=>setActiveBoard(b.id)}
-              onDoubleClick={()=>{setEditBoardId(b.id);setBoardName(b.name);setShowBoardModal(true);}}>
-              {b.name}
+      {/* ── SHEET TABS ── */}
+      <div className="fin-tabs-row">
+        <div className="fin-tabs">
+          {sheets.map(s => (
+            <button key={s.id}
+              className={`fin-tab${activeSheet===s.id?' active':''} fin-tab-${s.type}`}
+              onClick={()=>setActiveSheet(s.id)}
+              onDoubleClick={()=>{setEditSheetId(s.id);setSheetName(s.name);setShowSheetModal(true);}}>
+              {s.type==='income'?'↑':s.type==='fixed'?'↻':'↓'} {s.name}
             </button>
           ))}
-          <button className="canvas-board-tab-add" onClick={()=>{setEditBoardId(null);setBoardName('');setShowBoardModal(true);}}>+</button>
+          <button className="fin-tab-add" onClick={()=>{setEditSheetId(null);setSheetName('');setSheetType('expense');setShowSheetModal(true);}}>+ Nova</button>
         </div>
-        <div className="canvas-toolbar-divider"/>
-        {/* Tools */}
-        <button className="canvas-tool-btn" onClick={addNote} title="Adicionar nota">📝</button>
-        <button className="canvas-tool-btn" onClick={addImage} title="Adicionar imagem">🖼</button>
-        <button className="canvas-tool-btn" onClick={addLink} title="Adicionar link/vídeo">🔗</button>
-        <button className={`canvas-tool-btn${connecting?' active':''}`}
-          onClick={()=>setConnecting(connecting?null:'__start__')}
-          title="Conectar cards (clique em dois cards)">
-          ⟵→
-        </button>
-        <div className="canvas-toolbar-divider"/>
-        <button className="canvas-tool-btn" onClick={()=>setZoom(z=>Math.min(3,z*1.2))} title="Zoom in">+</button>
-        <span className="canvas-zoom-label">{Math.round(zoom*100)}%</span>
-        <button className="canvas-tool-btn" onClick={()=>setZoom(z=>Math.max(0.2,z*0.8))} title="Zoom out">−</button>
-        <button className="canvas-tool-btn" onClick={()=>{setZoom(1);setPan({x:0,y:0});}} title="Resetar">⌂</button>
-        {connecting && <span className="canvas-connect-hint">Clique no card de destino</span>}
+        <button className="fin-add-btn" onClick={openNewEntry}>+ Entrada</button>
       </div>
 
-      {/* ── CANVAS AREA ── */}
-      <div className="canvas-bg">
-        {/* Grid dots */}
-        <svg className="canvas-grid" style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none'}}>
-          <defs>
-            <pattern id="grid" x={pan.x % (20*zoom)} y={pan.y % (20*zoom)} width={20*zoom} height={20*zoom} patternUnits="userSpaceOnUse">
-              <circle cx={1} cy={1} r={0.8} fill="var(--b2)"/>
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#grid)"/>
-        </svg>
-
-        {/* Transform group */}
-        <div className="canvas-transform" style={{transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom})`, transformOrigin:'0 0'}}>
-
-          {/* ── EDGES ── */}
-          <svg className="canvas-edges-svg" style={{position:'absolute',inset:'-5000px',width:'10000px',height:'10000px',pointerEvents:'none',overflow:'visible'}}>
-            {boardEdges.map(edge => {
-              const fn = boardNodes.find(n=>n.id===edge.from_node);
-              const tn = boardNodes.find(n=>n.id===edge.to_node);
-              if (!fn||!tn) return null;
-              const fx = fn.x+fn.width/2+5000, fy = fn.y+fn.height/2+5000;
-              const tx = tn.x+tn.width/2+5000, ty = tn.y+tn.height/2+5000;
-              const mx = (fx+tx)/2, my = (fy+ty)/2;
-              const cp1x = fx+(mx-fx)*0.5, cp1y = fy, cp2x = tx+(mx-tx)*0.5, cp2y = ty;
+      {/* ── TABLE ── */}
+      <div className="fin-table-wrap">
+        <table className="fin-table">
+          <thead>
+            <tr>
+              <th style={{width:28}}></th>
+              <th>Item</th>
+              <th>Valor</th>
+              <th>Tag</th>
+              {currentSheet?.type!=='income' && <><th>Banco</th><th>Método</th><th>Dia</th></>}
+              {currentSheet?.type==='fixed' && <th>Parcelas</th>}
+              <th>Obs</th>
+              <th style={{width:32}}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {currentEntries.length === 0 ? (
+              <tr><td colSpan={10} className="fin-empty-row">
+                <div className="fin-empty">Nenhuma entrada ainda — clique em "+ Entrada"</div>
+              </td></tr>
+            ) : currentEntries.map(e => {
+              const instLeft = e.installments_total ? e.installments_total - (e.installments_done||0) : null;
+              const instDone = instLeft === 0;
               return (
-                <g key={edge.id}>
-                  <path d={`M${fx},${fy} C${cp1x},${cp1y} ${cp2x},${cp2y} ${tx},${ty}`}
-                    stroke="var(--acc)" strokeWidth={1.5/zoom} fill="none" strokeOpacity="0.6"
-                    strokeDasharray={`${4/zoom},${3/zoom}`}/>
-                  {/* Delete button on edge */}
-                  <circle cx={mx} cy={my} r={8/zoom} fill="var(--bg2)" stroke="var(--red)" strokeWidth={1/zoom}
-                    style={{pointerEvents:'all',cursor:'pointer'}}
-                    onClick={()=>onDeleteEdge(edge.id)}/>
-                  <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle"
-                    fontSize={10/zoom} fill="var(--red)" style={{pointerEvents:'none',userSelect:'none'}}>✕</text>
-                </g>
+                <tr key={e.id} className={`fin-row${e.paid?' paid':''}${instDone?' inst-done':''}`}
+                  onClick={()=>openEditEntry(e)}>
+                  <td>
+                    <button className={`fin-check${e.paid?' done':''}`}
+                      onClick={ev=>{ev.stopPropagation();onUpdateEntry(e.id,{paid:!e.paid});}}>
+                      {e.paid?'✓':''}
+                    </button>
+                  </td>
+                  <td className="fin-name">{e.name}</td>
+                  <td className="fin-amount">{fmtBRL(e.amount)}</td>
+                  <td>{e.tag && <span className="fin-tag">{e.tag}</span>}</td>
+                  {currentSheet?.type!=='income' && <>
+                    <td>{e.bank && <span className="fin-badge fin-bank">{e.bank}</span>}</td>
+                    <td>{e.method && <span className={`fin-badge fin-method fin-method-${e.method?.toLowerCase()}`}>{e.method}</span>}</td>
+                    <td className="fin-day">{e.due_day||'—'}</td>
+                  </>}
+                  {currentSheet?.type==='fixed' && (
+                    <td>
+                      {e.installments_total ? (
+                        <div className="fin-inst-wrap">
+                          <div className="fin-inst-bar-bg">
+                            <div className="fin-inst-bar-fg" style={{width:`${Math.min(100,(e.installments_done||0)/e.installments_total*100)}%`, background: instDone?'var(--acc)':'var(--yellow)'}}/>
+                          </div>
+                          <span className={`fin-inst-label${instDone?' done':''}`}>
+                            {instDone ? '✓ Quitado' : `${e.installments_done||0}/${e.installments_total}`}
+                          </span>
+                        </div>
+                      ) : <span className="fin-inst-fixed">Fixo</span>}
+                    </td>
+                  )}
+                  <td className="fin-notes">{e.notes}</td>
+                  <td>
+                    <button className="fin-del-btn" title="Excluir"
+                      onClick={ev=>{ev.stopPropagation();if(window.confirm('Excluir?'))onDeleteEntry(e.id);}}>
+                      ✕
+                    </button>
+                  </td>
+                </tr>
               );
             })}
-          </svg>
-
-          {/* ── NODES ── */}
-          {boardNodes.map(node => (
-            <CanvasNode key={node.id} node={node}
-              selected={selectedNode===node.id}
-              connecting={!!connecting}
-              editing={editingNode===node.id}
-              onMouseDown={e=>startDrag(e,node)}
-              onResize={e=>startResize(e,node)}
-              onDoubleClick={()=>{if(!connecting)setEditingNode(node.id);}}
-              onBlur={async (content)=>{setEditingNode(null);await onUpdateNode(node.id,{content});}}
-              onDelete={()=>onDeleteNode(node.id)}
-              onColorChange={color=>onUpdateNode(node.id,{color})}
-              onConnect={()=>{if(connecting==='__start__'){setConnecting(node.id);}else if(connecting){handleConnectTo(node.id);}}}
-            />
-          ))}
-        </div>
+          </tbody>
+          {currentEntries.length > 0 && (
+            <tfoot>
+              <tr className="fin-total-row">
+                <td colSpan={2} style={{textAlign:'right',paddingRight:16,fontFamily:'var(--fm)',fontSize:10,color:'var(--t3)',letterSpacing:'.1em'}}>SOMA</td>
+                <td className="fin-amount fin-total">{fmtBRL(totalSheet)}</td>
+                <td colSpan={10}/>
+              </tr>
+            </tfoot>
+          )}
+        </table>
       </div>
 
-      {/* Board modal */}
-      {showBoardModal && (
-        <BoardModal
-          name={boardName} setName={setBoardName}
-          editId={editBoardId}
-          onSave={saveBoard}
-          onDelete={editBoardId ? async()=>{await onDeleteBoard(editBoardId);setActiveBoard(boards.find(b=>b.id!==editBoardId)?.id||null);setShowBoardModal(false);} : null}
-          onClose={()=>{setShowBoardModal(false);setEditBoardId(null);setBoardName('');}}
-        />
-      )}
-    </div>
-  );
-}
-
-// ── Canvas Node Component ──
-function CanvasNode({ node, selected, connecting, editing, onMouseDown, onResize, onDoubleClick, onBlur, onDelete, onColorChange, onConnect }) {
-  const [localContent, setLocalContent] = useState(node.content||'');
-  const taRef = useRef(null);
-  useEffect(() => { setLocalContent(node.content||''); }, [node.content]);
-  useEffect(() => { if (editing && taRef.current) { taRef.current.focus(); taRef.current.select(); } }, [editing]);
-
-  const isYT = node.type==='link' && (node.content?.includes('youtube.com') || node.content?.includes('youtu.be'));
-  const ytId = isYT ? (node.content?.match(/(?:v=|youtu\.be\/)([^&\s]+)/)?.[1]) : null;
-
-  return (
-    <div className={`cv-node${selected?' selected':''}${connecting?' connectable':''}`}
-      style={{ left:node.x, top:node.y, width:node.width, height:node.height, background:node.color, position:'absolute' }}
-      onMouseDown={onMouseDown}
-      onDoubleClick={onDoubleClick}>
-
-      {/* Note content */}
-      {node.type==='note' && (
-        editing ? (
-          <textarea ref={taRef} className="cv-note-editor"
-            value={localContent}
-            onChange={e=>setLocalContent(e.target.value)}
-            onBlur={()=>onBlur(localContent)}
-            onMouseDown={e=>e.stopPropagation()}
-          />
-        ) : (
-          <div className="cv-note-text" dangerouslySetInnerHTML={{
-            __html: localContent.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/==(.*?)==/g,'<mark>$1</mark>').replace(/\n/g,'<br/>')
-          }}/>
-        )
-      )}
-
-      {/* Image */}
-      {node.type==='image' && <img src={node.content} alt="" className="cv-img" draggable={false}/>}
-
-      {/* Link / YouTube */}
-      {node.type==='link' && (
-        isYT && ytId ? (
-          <iframe className="cv-iframe" src={`https://www.youtube.com/embed/${ytId}`} frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="YouTube"/>
-        ) : (
-          <div className="cv-link-card" onMouseDown={e=>e.stopPropagation()}>
-            <div className="cv-link-icon">🔗</div>
-            <div className="cv-link-url">{node.content}</div>
-            <a href={node.content} target="_blank" rel="noopener noreferrer" className="cv-link-open">Abrir →</a>
+      {/* ── ENTRY MODAL ── */}
+      {showEntryModal && (
+        <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setShowEntryModal(false);}}>
+          <div className="modal">
+            <div className="modal-h"><div className="acc-dot"/>{editEntryId?'Editar Entrada':'Nova Entrada'}</div>
+            <label className="mlabel" style={{marginTop:0}}>NOME</label>
+            <input className="minput" placeholder="Ex: Aluguel, Netflix, Salário..." value={eName} onChange={e=>setEName(e.target.value)} autoFocus/>
+            <label className="mlabel">VALOR (R$)</label>
+            <input className="minput" type="number" placeholder="0,00" value={eAmount} onChange={e=>setEAmount(e.target.value)} step="0.01"/>
+            <label className="mlabel">TAG</label>
+            <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:4}}>
+              {TAGS_FIN.map(t=>(
+                <button key={t} className={`tag-opt${eTag===t?' sel':''}`}
+                  style={{fontSize:10,padding:'3px 9px',borderColor:eTag===t?'var(--acc)':'var(--b2)',color:eTag===t?'var(--acc)':'var(--t3)',background:eTag===t?'var(--acc-dim)':'transparent'}}
+                  onClick={()=>setETag(eTag===t?'':t)}>{t}</button>
+              ))}
+            </div>
+            {currentSheet?.type!=='income' && (
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                <div>
+                  <label className="mlabel">BANCO</label>
+                  <select className="mselect" value={eBank} onChange={e=>setEBank(e.target.value)}>
+                    <option value="">—</option>
+                    {BANKS.map(b=><option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="mlabel">MÉTODO</label>
+                  <select className="mselect" value={eMethod} onChange={e=>setEMethod(e.target.value)}>
+                    <option value="">—</option>
+                    {METHODS.map(m=><option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="mlabel">DIA DO VENCIMENTO</label>
+                  <input className="minput" type="number" placeholder="Ex: 15" min="1" max="31" value={eDueDay} onChange={e=>setEDueDay(e.target.value)}/>
+                </div>
+                <div>
+                  <label className="mlabel">PARCELAS (TOTAL / FEITAS)</label>
+                  <div style={{display:'flex',gap:6}}>
+                    <input className="minput" type="number" placeholder="Total" min="0" value={eInstTotal} onChange={e=>setEInstTotal(e.target.value)} style={{flex:1}}/>
+                    <input className="minput" type="number" placeholder="Feitas" min="0" value={eInstDone} onChange={e=>setEInstDone(e.target.value)} style={{flex:1}}/>
+                  </div>
+                  {eInstTotal && <div style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--acc)',marginTop:4,letterSpacing:'.06em'}}>
+                    {parseInt(eInstTotal)-(parseInt(eInstDone)||0)} parcela{(parseInt(eInstTotal)-(parseInt(eInstDone)||0))!==1?'s':''} restante{(parseInt(eInstTotal)-(parseInt(eInstDone)||0))!==1?'s':''}
+                  </div>}
+                </div>
+              </div>
+            )}
+            <label className="mlabel">OBS</label>
+            <input className="minput" placeholder="Observações opcionais..." value={eNotes} onChange={e=>setENotes(e.target.value)}/>
+            <div className="modal-btns">
+              <button className="modal-save" onClick={saveEntry} disabled={saving}>{saving?'Salvando...':editEntryId?'SALVAR':'ADICIONAR'}</button>
+              <button className="modal-close" onClick={()=>{setShowEntryModal(false);setEditEntryId(null);}}>CANCELAR</button>
+            </div>
           </div>
-        )
+        </div>
       )}
 
-      {/* Controls (visible on hover/select) */}
-      <div className="cv-controls" onMouseDown={e=>e.stopPropagation()}>
-        <button className="cv-ctrl-btn cv-delete" onClick={onDelete} title="Excluir">✕</button>
-        <button className={`cv-ctrl-btn cv-connect${connecting?' connecting':''}`} onClick={onConnect} title="Conectar">⟵→</button>
-        <div className="cv-colors">
-          {(document.documentElement.getAttribute('data-theme')==='light' ? NODE_COLORS_LIGHT : NODE_COLORS).map(c=>(
-            <button key={c} className="cv-color-dot" style={{background:c,outline:node.color===c?'2px solid var(--acc)':''}} onClick={()=>onColorChange(c)}/>
-          ))}
+      {/* ── SHEET MODAL ── */}
+      {showSheetModal && (
+        <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setShowSheetModal(false);}}>
+          <div className="modal">
+            <div className="modal-h"><div className="acc-dot"/>{editSheetId?'Editar Planilha':'Nova Planilha'}</div>
+            <label className="mlabel" style={{marginTop:0}}>NOME</label>
+            <input className="minput" placeholder="Ex: Cartão Nubank, Investimentos..." value={sheetName} onChange={e=>setSheetName(e.target.value)} autoFocus/>
+            {!editSheetId && <>
+              <label className="mlabel">TIPO</label>
+              <div style={{display:'flex',gap:8,marginBottom:4}}>
+                {[{id:'expense',label:'↓ Despesas'},{id:'income',label:'↑ Receitas'},{id:'fixed',label:'↻ Fixos/Parcelas'}].map(t=>(
+                  <button key={t.id} style={{flex:1,padding:'10px 8px',borderRadius:'var(--r)',border:`1px solid ${sheetType===t.id?'var(--acc)':'var(--b2)'}`,background:sheetType===t.id?'var(--acc-dim)':'transparent',color:sheetType===t.id?'var(--acc)':'var(--t3)',fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:'var(--fm)',letterSpacing:'.06em',transition:'all .15s'}}
+                    onClick={()=>setSheetType(t.id)}>{t.label}</button>
+                ))}
+              </div>
+            </>}
+            <div className="modal-btns">
+              <button className="modal-save" onClick={saveSheet}>{editSheetId?'SALVAR':'CRIAR'}</button>
+              {editSheetId && <button className="btn-del" style={{padding:'12px 14px'}} onClick={async()=>{await onDeleteSheet(editSheetId);setShowSheetModal(false);setEditSheetId(null);}}>EXCLUIR</button>}
+              <button className="modal-close" onClick={()=>{setShowSheetModal(false);setEditSheetId(null);}}>CANCELAR</button>
+            </div>
+          </div>
         </div>
-      </div>
-
-      {/* Resize handle */}
-      <div className="cv-resize" onMouseDown={e=>{e.stopPropagation();onResize(e);}}/>
-    </div>
-  );
-}
-
-// ── Board Modal ──
-function BoardModal({ name, setName, editId, onSave, onDelete, onClose }) {
-  return (
-    <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div className="modal" onMouseDown={e=>e.stopPropagation()}>
-        <div className="modal-h"><div className="acc-dot"/>{editId?'Editar Quadro':'Novo Quadro'}</div>
-        <label className="mlabel" style={{marginTop:0}}>NOME</label>
-        <input className="minput" placeholder="Ex: Projetos, Ideias, Estudos..." value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&onSave()} autoFocus/>
-        <div className="modal-btns">
-          <button className="modal-save" onClick={onSave}>{editId?'SALVAR':'CRIAR'}</button>
-          {editId && onDelete && <button className="btn-del" style={{padding:'12px 14px'}} onClick={onDelete}>EXCLUIR</button>}
-          <button className="modal-close" onClick={onClose}>CANCELAR</button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
