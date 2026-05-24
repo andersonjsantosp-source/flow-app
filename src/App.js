@@ -1807,6 +1807,31 @@ const installmentLabel = (done, total) => {
   return `${done}/${total} — ${left} restante${left!==1?'s':''}`;
 };
 
+// ── Donut Chart ──────────────────────────────────────
+function FinDonut({ income, expenses }) {
+  const size = 80, r = 32, c = 2*Math.PI*r;
+  const total = income + expenses || 1;
+  const incPct = income / total;
+  const expPct = expenses / total;
+  const incArc = c * incPct;
+  const expArc = c * expPct;
+  return (
+    <div className="fin-donut-wrap">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{transform:'rotate(-90deg)'}}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--b2)" strokeWidth="10"/>
+        {expenses > 0 && <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--red)" strokeWidth="10"
+          strokeDasharray={`${expArc} ${c}`} strokeDashoffset={0} strokeLinecap="round"/>}
+        {income > 0 && <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--acc)" strokeWidth="10"
+          strokeDasharray={`${incArc} ${c}`} strokeDashoffset={-expArc} strokeLinecap="round"/>}
+      </svg>
+      <div className="fin-donut-legend">
+        <div className="fin-donut-leg-item"><span style={{background:'var(--acc)'}}/> Receitas</div>
+        <div className="fin-donut-leg-item"><span style={{background:'var(--red)'}}/> Despesas</div>
+      </div>
+    </div>
+  );
+}
+
 function FinancePage({ sheets, entries, onAddSheet, onUpdateSheet, onDeleteSheet, onAddEntry, onUpdateEntry, onDeleteEntry }) {
   const [activeSheet, setActiveSheet] = useState(null);
   const [showEntryModal, setShowEntryModal] = useState(false);
@@ -1826,6 +1851,7 @@ function FinancePage({ sheets, entries, onAddSheet, onUpdateSheet, onDeleteSheet
   const [eInstTotal, setEInstTotal] = useState('');
   const [eInstDone,  setEInstDone]  = useState('');
   const [eNotes,   setENotes]   = useState('');
+  const [eLogoUrl, setELogoUrl] = useState(null);
   const [saving,   setSaving]   = useState(false);
 
   useEffect(() => {
@@ -1851,14 +1877,14 @@ function FinancePage({ sheets, entries, onAddSheet, onUpdateSheet, onDeleteSheet
 
   const openNewEntry = () => {
     setEditEntryId(null); setEName(''); setEAmount(''); setETag('');
-    setEBank(''); setEMethod(''); setEDueDay(''); setEInstTotal(''); setEInstDone(''); setENotes('');
+    setEBank(''); setEMethod(''); setEDueDay(''); setEInstTotal(''); setEInstDone(''); setENotes(''); setELogoUrl(null);
     setShowEntryModal(true);
   };
   const openEditEntry = e => {
     setEditEntryId(e.id); setEName(e.name); setEAmount(String(e.amount||''));
     setETag(e.tag||''); setEBank(e.bank||''); setEMethod(e.method||'');
     setEDueDay(String(e.due_day||'')); setEInstTotal(String(e.installments_total||''));
-    setEInstDone(String(e.installments_done||'')); setENotes(e.notes||'');
+    setEInstDone(String(e.installments_done||'')); setENotes(e.notes||''); setELogoUrl(e.logo_url||null);
     setShowEntryModal(true);
   };
   const saveEntry = async () => {
@@ -1869,7 +1895,7 @@ function FinancePage({ sheets, entries, onAddSheet, onUpdateSheet, onDeleteSheet
       method: eMethod, due_day: parseInt(eDueDay)||null,
       installments_total: parseInt(eInstTotal)||null,
       installments_done: parseInt(eInstDone)||0,
-      notes: eNotes,
+      notes: eNotes, logo_url: eLogoUrl || null,
     };
     if (editEntryId) await onUpdateEntry(editEntryId, payload);
     else await onAddEntry(activeSheet, payload);
@@ -1887,6 +1913,8 @@ function FinancePage({ sheets, entries, onAddSheet, onUpdateSheet, onDeleteSheet
     <div className="finance-page">
       {/* ── TOP SUMMARY BAR ── */}
       <div className="fin-summary-bar fade">
+      {/* ── SUMMARY BAR ── */}
+      <div className="fin-summary-bar fade">
         <div className="fin-summary-card">
           <div className="fin-summary-label">RECEITAS</div>
           <div className="fin-summary-value income">{fmtBRL(totalIncome)}</div>
@@ -1899,9 +1927,9 @@ function FinancePage({ sheets, entries, onAddSheet, onUpdateSheet, onDeleteSheet
           <div className="fin-summary-label">SALDO</div>
           <div className={`fin-summary-value ${balance>=0?'income':'expense'}`}>{fmtBRL(balance)}</div>
         </div>
-        <div className="fin-summary-card">
-          <div className="fin-summary-label">A PAGAR</div>
-          <div className="fin-summary-value">{fmtBRL(unpaidSheet)}</div>
+        {/* Donut chart */}
+        <div className="fin-chart-card">
+          <FinDonut income={totalIncome} expenses={totalExpenses}/>
         </div>
       </div>
 
@@ -1926,7 +1954,7 @@ function FinancePage({ sheets, entries, onAddSheet, onUpdateSheet, onDeleteSheet
         <table className="fin-table">
           <thead>
             <tr>
-              <th style={{width:28}}></th>
+              <th style={{width:40}}></th>
               <th>Item</th>
               <th>Valor</th>
               <th>Tag</th>
@@ -1944,14 +1972,31 @@ function FinancePage({ sheets, entries, onAddSheet, onUpdateSheet, onDeleteSheet
             ) : currentEntries.map(e => {
               const instLeft = e.installments_total ? e.installments_total - (e.installments_done||0) : null;
               const instDone = instLeft === 0;
+              const showLogo = currentSheet?.type === 'income' || currentSheet?.type === 'fixed';
               return (
                 <tr key={e.id} className={`fin-row${e.paid?' paid':''}${instDone?' inst-done':''}`}
                   onClick={()=>openEditEntry(e)}>
-                  <td>
-                    <button className={`fin-check${e.paid?' done':''}`}
-                      onClick={ev=>{ev.stopPropagation();onUpdateEntry(e.id,{paid:!e.paid});}}>
-                      {e.paid?'✓':''}
-                    </button>
+                  <td onClick={ev=>ev.stopPropagation()}>
+                    {showLogo ? (
+                      <label className="fin-logo-cell" title="Clique para adicionar logo">
+                        <input type="file" accept="image/*" style={{display:'none'}} onChange={ev=>{
+                          const file=ev.target.files?.[0]; if(!file) return;
+                          if(file.size>500*1024){alert('Imagem muito grande. Use menos de 500KB.');return;}
+                          const reader=new FileReader();
+                          reader.onload=async re=>{ await onUpdateEntry(e.id,{logo_url:re.target.result}); };
+                          reader.readAsDataURL(file);
+                        }}/>
+                        {e.logo_url
+                          ? <img src={e.logo_url} alt="" className="fin-logo-img"/>
+                          : <div className="fin-logo-placeholder">+</div>
+                        }
+                      </label>
+                    ) : (
+                      <button className={`fin-check${e.paid?' done':''}`}
+                        onClick={ev=>{ev.stopPropagation();onUpdateEntry(e.id,{paid:!e.paid});}}>
+                        {e.paid?'✓':''}
+                      </button>
+                    )}
                   </td>
                   <td className="fin-name">{e.name}</td>
                   <td className="fin-amount">{fmtBRL(e.amount)}</td>
@@ -2047,6 +2092,23 @@ function FinancePage({ sheets, entries, onAddSheet, onUpdateSheet, onDeleteSheet
                 </div>
               </div>
             )}
+            <label className="mlabel">LOGO / ÍCONE (opcional)</label>
+            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:4}}>
+              <label className="fin-modal-logo-upload" title="Upload de logo">
+                <input type="file" accept="image/*" style={{display:'none'}} onChange={ev=>{
+                  const file=ev.target.files?.[0]; if(!file) return;
+                  if(file.size>500*1024){alert('Use menos de 500KB.');return;}
+                  const reader=new FileReader();
+                  reader.onload=re=>setELogoUrl(re.target.result);
+                  reader.readAsDataURL(file);
+                }}/>
+                {eLogoUrl
+                  ? <img src={eLogoUrl} alt="" style={{width:36,height:36,borderRadius:8,objectFit:'cover'}}/>
+                  : <div style={{width:36,height:36,borderRadius:8,background:'var(--glass-bg)',border:'1px dashed var(--b3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,color:'var(--t3)'}}>+</div>
+                }
+              </label>
+              {eLogoUrl && <button onClick={()=>setELogoUrl(null)} style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:12}}>Remover</button>}
+            </div>
             <label className="mlabel">OBS</label>
             <input className="minput" placeholder="Observações opcionais..." value={eNotes} onChange={e=>setENotes(e.target.value)}/>
             <div className="modal-btns">
