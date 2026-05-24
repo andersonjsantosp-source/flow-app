@@ -1911,8 +1911,6 @@ function FinancePage({ sheets, entries, onAddSheet, onUpdateSheet, onDeleteSheet
 
   return (
     <div className="finance-page">
-      {/* ── TOP SUMMARY BAR ── */}
-      <div className="fin-summary-bar fade">
       {/* ── SUMMARY BAR ── */}
       <div className="fin-summary-bar fade">
         <div className="fin-summary-card">
@@ -1927,7 +1925,6 @@ function FinancePage({ sheets, entries, onAddSheet, onUpdateSheet, onDeleteSheet
           <div className="fin-summary-label">SALDO</div>
           <div className={`fin-summary-value ${balance>=0?'income':'expense'}`}>{fmtBRL(balance)}</div>
         </div>
-        {/* Donut chart */}
         <div className="fin-chart-card">
           <FinDonut income={totalIncome} expenses={totalExpenses}/>
         </div>
