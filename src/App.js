@@ -163,6 +163,9 @@ function FlowApp({ session }) {
   const [routines, setRoutines] = useState([]);
   const [rBlocks,  setRBlocks]  = useState([]);
   const [rLogs,    setRLogs]    = useState({});  // { dateKey: [blockId,...] }
+  const [cBoards,  setCBoards]  = useState([]);
+  const [cNodes,   setCNodes]   = useState([]);
+  const [cEdges,   setCEdges]   = useState([]);
   const [dataReady, setDataReady] = useState(false);
 
   // ── UI state ────────────────────────────────────────
@@ -192,7 +195,7 @@ function FlowApp({ session }) {
   // ── Load all data ────────────────────────────────────
   useEffect(() => {
     async function load() {
-      const [hRes, lRes, cRes, tgRes, tkRes, jRes, rtRes, rbRes, rlRes] = await Promise.all([
+      const [hRes, lRes, cRes, tgRes, tkRes, jRes, rtRes, rbRes, rlRes, cbRes, cnRes, ceRes] = await Promise.all([
         supabase.from('habits').select('*').eq('user_id', uid).order('created_at'),
         supabase.from('habit_logs').select('*').eq('user_id', uid),
         supabase.from('kb_cols').select('*').eq('user_id', uid).order('position'),
@@ -202,6 +205,9 @@ function FlowApp({ session }) {
         supabase.from('routines').select('*').eq('user_id', uid).order('position'),
         supabase.from('routine_blocks').select('*').eq('user_id', uid).order('start_time'),
         supabase.from('routine_logs').select('*').eq('user_id', uid),
+        supabase.from('canvas_boards').select('*').eq('user_id', uid).order('created_at'),
+        supabase.from('canvas_nodes').select('*').eq('user_id', uid),
+        supabase.from('canvas_edges').select('*').eq('user_id', uid),
       ]);
 
       setHabits(hRes.data || []);
@@ -243,6 +249,9 @@ function FlowApp({ session }) {
         rlogsMap[l.date].push(l.block_id);
       });
       setRLogs(rlogsMap);
+      setCBoards(cbRes.data || []);
+      setCNodes(cnRes.data || []);
+      setCEdges(ceRes.data || []);
       if (cols.length > 0) setTCol(cols[0].id);
       setDataReady(true);
     }
@@ -452,6 +461,55 @@ function FlowApp({ session }) {
     }
   }, [rLogs, uid]);
 
+  // ── CANVAS ACTIONS ───────────────────────────────────
+  const addBoard = useCallback(async (name) => {
+    const { data } = await supabase.from('canvas_boards').insert({ user_id: uid, name }).select().single();
+    if (data) setCBoards(prev => [...prev, data]);
+    return data;
+  }, [uid]);
+
+  const updateBoard = useCallback(async (id, patch) => {
+    setCBoards(prev => prev.map(b => b.id === id ? {...b, ...patch} : b));
+    await supabase.from('canvas_boards').update(patch).eq('id', id);
+  }, []);
+
+  const deleteBoard = useCallback(async id => {
+    setCBoards(prev => prev.filter(b => b.id !== id));
+    setCNodes(prev => prev.filter(n => n.board_id !== id));
+    setCEdges(prev => prev.filter(e => e.board_id !== id));
+    await supabase.from('canvas_boards').delete().eq('id', id);
+  }, []);
+
+  const addNode = useCallback(async (boardId, node) => {
+    const { data } = await supabase.from('canvas_nodes').insert({ user_id: uid, board_id: boardId, ...node }).select().single();
+    if (data) setCNodes(prev => [...prev, data]);
+    return data;
+  }, [uid]);
+
+  const updateNode = useCallback(async (id, patch) => {
+    setCNodes(prev => prev.map(n => n.id === id ? {...n, ...patch} : n));
+    await supabase.from('canvas_nodes').update(patch).eq('id', id);
+  }, []);
+
+  const deleteNode = useCallback(async id => {
+    setCNodes(prev => prev.filter(n => n.id !== id));
+    setCEdges(prev => prev.filter(e => e.from_node !== id && e.to_node !== id));
+    await supabase.from('canvas_nodes').delete().eq('id', id);
+    await supabase.from('canvas_edges').delete().or(`from_node.eq.${id},to_node.eq.${id}`);
+  }, []);
+
+  const addEdge = useCallback(async (boardId, fromNode, toNode) => {
+    const exists = cEdges.find(e => e.from_node === fromNode && e.to_node === toNode);
+    if (exists) return;
+    const { data } = await supabase.from('canvas_edges').insert({ user_id: uid, board_id: boardId, from_node: fromNode, to_node: toNode }).select().single();
+    if (data) setCEdges(prev => [...prev, data]);
+  }, [cEdges, uid]);
+
+  const deleteEdge = useCallback(async id => {
+    setCEdges(prev => prev.filter(e => e.id !== id));
+    await supabase.from('canvas_edges').delete().eq('id', id);
+  }, []);
+
   // ── JOURNAL ACTIONS ──────────────────────────────────
   const saveEntry = useCallback(async (entryData) => {
     const base = { title: entryData.title, body: entryData.body, mood: entryData.mood, tags: entryData.tags };
@@ -501,6 +559,7 @@ function FlowApp({ session }) {
             {id:'kanban',  ico:'⊞', label:'Kanban',  badge:`${tasks.length} tarefas`},
             {id:'journal', ico:'✦', label:'Diário',  badge:`${entries.length} entradas`},
             {id:'routine', ico:'◷', label:'Rotina',  badge:`${routines.length} rotinas`},
+            {id:'canvas',  ico:'⬡', label:'Canvas',  badge:`${cBoards.length} quadros`},
           ].map(({id,ico,label,badge}) => (
             <button key={id} className={`sb-item ${page===id?'active':''}`} onClick={()=>setPage(id)}>
               <div className="sb-item-bar"/>
@@ -528,18 +587,21 @@ function FlowApp({ session }) {
 
       {/* ── MAIN ── */}
       <div className="main">
+        {page !== 'canvas' && (
         <div className="mod-header">
           <div className="mod-eyebrow fade">
             {page==='habits' ? {today:'ACOMPANHAMENTO DIÁRIO',week:'VISÃO 7 DIAS',stats:'ANÁLISE DE DESEMPENHO',manage:'GERENCIAMENTO'}[habTab]
             : page==='kanban'  ? 'GESTÃO DE TAREFAS'
             : page==='journal' ? 'REFLEXÕES & ANOTAÇÕES'
-            : 'PLANEJAMENTO DO DIA'}
+            : page==='routine' ? 'PLANEJAMENTO DO DIA'
+            : 'SEGUNDO CÉREBRO'}
           </div>
           <div className="mod-title fade" dangerouslySetInnerHTML={{__html:
             page==='habits' ? {today:'Hábitos <span class="hi">de Hoje</span>',week:'Visão <span class="hi">Semanal</span>',stats:'Análise <span class="hi">de Dados</span>',manage:'Meus <span class="hi">Hábitos</span>'}[habTab]
             : page==='kanban'  ? 'Quadro <span class="hi">Kanban</span>'
             : page==='journal' ? 'Meu <span class="hi">Diário</span>'
-            : 'Minha <span class="hi">Rotina</span>'
+            : page==='routine' ? 'Minha <span class="hi">Rotina</span>'
+            : 'Meu <span class="hi">Canvas</span>'
           }}/>
           {page==='habits' && (
             <div className="sub-tabs">
@@ -549,8 +611,9 @@ function FlowApp({ session }) {
             </div>
           )}
         </div>
+        )}
 
-        <div className="mod-body">
+        <div className={page==='canvas' ? 'canvas-fullbody' : 'mod-body'}>
           {page==='habits' && habTab==='today'  && <HabToday  habits={habits} logs={logs} td={td} onToggle={toggleHabit}/>}
           {page==='habits' && habTab==='week'   && <HabWeek   habits={habits} logs={logs} td={td} onToggle={toggleHabit}/>}
           {page==='habits' && habTab==='stats'  && <HabStats  habits={habits} logs={logs} td={td}/>}
@@ -583,12 +646,20 @@ function FlowApp({ session }) {
               onToggleBlock={toggleBlock}
             />
           )}
+          {page==='canvas' && (
+            <CanvasPage
+              boards={cBoards} nodes={cNodes} edges={cEdges}
+              onAddBoard={addBoard} onUpdateBoard={updateBoard} onDeleteBoard={deleteBoard}
+              onAddNode={addNode} onUpdateNode={updateNode} onDeleteNode={deleteNode}
+              onAddEdge={addEdge} onDeleteEdge={deleteEdge}
+            />
+          )}
         </div>
       </div>
 
       {/* ── BOTTOM NAV ── */}
       <nav className="bnav">
-        {[{ico:'◎',label:'HÁBITOS',id:'habits'},{ico:'⊞',label:'KANBAN',id:'kanban'},{ico:'✦',label:'DIÁRIO',id:'journal'},{ico:'◷',label:'ROTINA',id:'routine'}].map(({ico,label,id})=>(
+        {[{ico:'◎',label:'HÁBITOS',id:'habits'},{ico:'⊞',label:'KANBAN',id:'kanban'},{ico:'✦',label:'DIÁRIO',id:'journal'},{ico:'◷',label:'ROTINA',id:'routine'},{ico:'⬡',label:'CANVAS',id:'canvas'}].map(({ico,label,id})=>(
           <button key={id} className={page===id?'active':''} onClick={()=>setPage(id)}>
             <span className="bnav-ico">{ico}</span><span>{label}</span><div className="bnav-pip"/>
           </button>
@@ -1717,6 +1788,378 @@ function RoutinePage({ routines, blocks, logs, onAddRoutine, onUpdateRoutine, on
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────
+// CANVAS PAGE — Segundo Cérebro
+// ─────────────────────────────────────────────────────
+const NODE_COLORS = ['#1E2222','#1A2533','#221A2C','#2C1A1A','#1A2C1A','#2C2A1A'];
+const NODE_COLORS_LIGHT = ['#FFFFFF','#EEF4FF','#F5EEFF','#FFEEEE','#EEFFEE','#FFFAEE'];
+
+function CanvasPage({ boards, nodes, edges, onAddBoard, onUpdateBoard, onDeleteBoard, onAddNode, onUpdateNode, onDeleteNode, onAddEdge, onDeleteEdge }) {
+  const [activeBoard, setActiveBoard] = useState(null);
+  const [showBoardModal, setShowBoardModal] = useState(false);
+  const [boardName, setBoardName] = useState('');
+  const [editBoardId, setEditBoardId] = useState(null);
+
+  // Canvas state
+  const [pan, setPan]         = useState({ x: 0, y: 0 });
+  const [zoom, setZoom]       = useState(1);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart]   = useState(null);
+  const [connecting, setConnecting] = useState(null); // nodeId being connected from
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [editingNode, setEditingNode]   = useState(null);
+  const canvasRef = useRef(null);
+  const theme = document.documentElement.getAttribute('data-theme');
+
+  useEffect(() => {
+    if (!activeBoard && boards.length > 0) setActiveBoard(boards[0].id);
+  }, [boards]);
+
+  const boardNodes = nodes.filter(n => n.board_id === activeBoard);
+  const boardEdges = edges.filter(e => e.board_id === activeBoard);
+
+  // ── Board actions ──
+  const saveBoard = async () => {
+    if (!boardName.trim()) return;
+    if (editBoardId) {
+      await onUpdateBoard(editBoardId, { name: boardName });
+      setEditBoardId(null);
+    } else {
+      const b = await onAddBoard(boardName.trim());
+      if (b) setActiveBoard(b.id);
+    }
+    setBoardName(''); setShowBoardModal(false);
+  };
+
+  // ── Node actions ──
+  const addNote = async () => {
+    const cx = (-pan.x + window.innerWidth/2) / zoom - 120;
+    const cy = (-pan.y + 200) / zoom;
+    await onAddNode(activeBoard, { type:'note', content:'Nova nota', x:cx, y:cy, width:240, height:160, color: theme==='light'?'#FFFFFF':'#1E2222' });
+  };
+
+  const addImage = () => {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*';
+    input.onchange = async e => {
+      const file = e.target.files?.[0]; if (!file) return;
+      if (file.size > 3*1024*1024) { alert('Imagem muito grande. Use menos de 3MB.'); return; }
+      const reader = new FileReader();
+      reader.onload = async ev => {
+        const cx = (-pan.x + window.innerWidth/2) / zoom - 120;
+        const cy = (-pan.y + 200) / zoom;
+        await onAddNode(activeBoard, { type:'image', content:ev.target.result, x:cx, y:cy, width:240, height:180, color:'transparent' });
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  };
+
+  const addLink = async () => {
+    const url = prompt('Cole a URL (YouTube, site, etc):');
+    if (!url) return;
+    const cx = (-pan.x + window.innerWidth/2) / zoom - 120;
+    const cy = (-pan.y + 200) / zoom;
+    await onAddNode(activeBoard, { type:'link', content:url, x:cx, y:cy, width:240, height:80, color: theme==='light'?'#EEF4FF':'#1A2533' });
+  };
+
+  // ── Drag node ──
+  const dragNode = useRef(null);
+  const startDrag = (e, node) => {
+    if (e.button !== 0) return;
+    if (connecting) { handleConnectTo(node.id); return; }
+    e.stopPropagation();
+    setSelectedNode(node.id);
+    const startX = e.clientX, startY = e.clientY;
+    const origX = node.x, origY = node.y;
+    const onMove = ev => {
+      const dx = (ev.clientX - startX) / zoom;
+      const dy = (ev.clientY - startY) / zoom;
+      onUpdateNode(node.id, { x: origX + dx, y: origY + dy });
+    };
+    const onUp = async ev => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      const dx = (ev.clientX - startX) / zoom;
+      const dy = (ev.clientY - startY) / zoom;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        await onUpdateNode(node.id, { x: origX + dx, y: origY + dy });
+      }
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  // ── Resize node ──
+  const startResize = (e, node) => {
+    e.stopPropagation(); e.preventDefault();
+    const startX = e.clientX, startY = e.clientY;
+    const origW = node.width, origH = node.height;
+    const onMove = ev => {
+      const dw = (ev.clientX - startX) / zoom;
+      const dh = (ev.clientY - startY) / zoom;
+      onUpdateNode(node.id, { width: Math.max(120, origW + dw), height: Math.max(60, origH + dh) });
+    };
+    const onUp = async ev => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      const dw = (ev.clientX - startX) / zoom;
+      const dh = (ev.clientY - startY) / zoom;
+      await onUpdateNode(node.id, { width: Math.max(120, origW + dw), height: Math.max(60, origH + dh) });
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  // ── Pan canvas ──
+  const startPan = e => {
+    if (e.button !== 0 || connecting) return;
+    if (e.target === canvasRef.current || e.target.classList.contains('canvas-bg')) {
+      setSelectedNode(null);
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+    }
+  };
+  useEffect(() => {
+    const onMove = e => { if (isPanning && panStart) setPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y }); };
+    const onUp   = () => setIsPanning(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [isPanning, panStart]);
+
+  // ── Zoom ──
+  const onWheel = e => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setZoom(z => Math.min(3, Math.max(0.2, z * delta)));
+  };
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // ── Connect nodes ──
+  const handleConnectTo = async toId => {
+    if (connecting && toId !== connecting) {
+      await onAddEdge(activeBoard, connecting, toId);
+    }
+    setConnecting(null);
+  };
+
+  // ── Edge midpoint for delete button ──
+  const edgeMidpoint = (fromNode, toNode) => {
+    if (!fromNode || !toNode) return null;
+    const fx = fromNode.x + fromNode.width/2;
+    const fy = fromNode.y + fromNode.height/2;
+    const tx = toNode.x + toNode.width/2;
+    const ty = toNode.y + toNode.height/2;
+    return { x: (fx+tx)/2, y: (fy+ty)/2 };
+  };
+
+  if (!activeBoard && boards.length === 0) return (
+    <div className="canvas-empty">
+      <div style={{fontSize:48,marginBottom:16}}>⬡</div>
+      <div className="canvas-empty-h">Nenhum quadro criado</div>
+      <button className="canvas-new-board-btn" onClick={()=>setShowBoardModal(true)}>+ Criar primeiro quadro</button>
+      {showBoardModal && <BoardModal name={boardName} setName={setBoardName} onSave={saveBoard} onClose={()=>setShowBoardModal(false)}/>}
+    </div>
+  );
+
+  return (
+    <div className="canvas-root" ref={canvasRef} onMouseDown={startPan}
+      style={{cursor: isPanning ? 'grabbing' : connecting ? 'crosshair' : 'default'}}>
+
+      {/* ── TOOLBAR ── */}
+      <div className="canvas-toolbar" onMouseDown={e=>e.stopPropagation()}>
+        {/* Board tabs */}
+        <div className="canvas-board-tabs">
+          {boards.map(b => (
+            <button key={b.id}
+              className={`canvas-board-tab${activeBoard===b.id?' active':''}`}
+              onClick={()=>setActiveBoard(b.id)}
+              onDoubleClick={()=>{setEditBoardId(b.id);setBoardName(b.name);setShowBoardModal(true);}}>
+              {b.name}
+            </button>
+          ))}
+          <button className="canvas-board-tab-add" onClick={()=>{setEditBoardId(null);setBoardName('');setShowBoardModal(true);}}>+</button>
+        </div>
+        <div className="canvas-toolbar-divider"/>
+        {/* Tools */}
+        <button className="canvas-tool-btn" onClick={addNote} title="Adicionar nota">📝</button>
+        <button className="canvas-tool-btn" onClick={addImage} title="Adicionar imagem">🖼</button>
+        <button className="canvas-tool-btn" onClick={addLink} title="Adicionar link/vídeo">🔗</button>
+        <button className={`canvas-tool-btn${connecting?' active':''}`}
+          onClick={()=>setConnecting(connecting?null:'__start__')}
+          title="Conectar cards (clique em dois cards)">
+          ⟵→
+        </button>
+        <div className="canvas-toolbar-divider"/>
+        <button className="canvas-tool-btn" onClick={()=>setZoom(z=>Math.min(3,z*1.2))} title="Zoom in">+</button>
+        <span className="canvas-zoom-label">{Math.round(zoom*100)}%</span>
+        <button className="canvas-tool-btn" onClick={()=>setZoom(z=>Math.max(0.2,z*0.8))} title="Zoom out">−</button>
+        <button className="canvas-tool-btn" onClick={()=>{setZoom(1);setPan({x:0,y:0});}} title="Resetar">⌂</button>
+        {connecting && <span className="canvas-connect-hint">Clique no card de destino</span>}
+      </div>
+
+      {/* ── CANVAS AREA ── */}
+      <div className="canvas-bg">
+        {/* Grid dots */}
+        <svg className="canvas-grid" style={{position:'absolute',inset:0,width:'100%',height:'100%',pointerEvents:'none'}}>
+          <defs>
+            <pattern id="grid" x={pan.x % (20*zoom)} y={pan.y % (20*zoom)} width={20*zoom} height={20*zoom} patternUnits="userSpaceOnUse">
+              <circle cx={1} cy={1} r={0.8} fill="var(--b2)"/>
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#grid)"/>
+        </svg>
+
+        {/* Transform group */}
+        <div className="canvas-transform" style={{transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom})`, transformOrigin:'0 0'}}>
+
+          {/* ── EDGES ── */}
+          <svg className="canvas-edges-svg" style={{position:'absolute',inset:'-5000px',width:'10000px',height:'10000px',pointerEvents:'none',overflow:'visible'}}>
+            {boardEdges.map(edge => {
+              const fn = boardNodes.find(n=>n.id===edge.from_node);
+              const tn = boardNodes.find(n=>n.id===edge.to_node);
+              if (!fn||!tn) return null;
+              const fx = fn.x+fn.width/2+5000, fy = fn.y+fn.height/2+5000;
+              const tx = tn.x+tn.width/2+5000, ty = tn.y+tn.height/2+5000;
+              const mx = (fx+tx)/2, my = (fy+ty)/2;
+              const cp1x = fx+(mx-fx)*0.5, cp1y = fy, cp2x = tx+(mx-tx)*0.5, cp2y = ty;
+              return (
+                <g key={edge.id}>
+                  <path d={`M${fx},${fy} C${cp1x},${cp1y} ${cp2x},${cp2y} ${tx},${ty}`}
+                    stroke="var(--acc)" strokeWidth={1.5/zoom} fill="none" strokeOpacity="0.6"
+                    strokeDasharray={`${4/zoom},${3/zoom}`}/>
+                  {/* Delete button on edge */}
+                  <circle cx={mx} cy={my} r={8/zoom} fill="var(--bg2)" stroke="var(--red)" strokeWidth={1/zoom}
+                    style={{pointerEvents:'all',cursor:'pointer'}}
+                    onClick={()=>onDeleteEdge(edge.id)}/>
+                  <text x={mx} y={my} textAnchor="middle" dominantBaseline="middle"
+                    fontSize={10/zoom} fill="var(--red)" style={{pointerEvents:'none',userSelect:'none'}}>✕</text>
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* ── NODES ── */}
+          {boardNodes.map(node => (
+            <CanvasNode key={node.id} node={node}
+              selected={selectedNode===node.id}
+              connecting={!!connecting}
+              editing={editingNode===node.id}
+              onMouseDown={e=>startDrag(e,node)}
+              onResize={e=>startResize(e,node)}
+              onDoubleClick={()=>{if(!connecting)setEditingNode(node.id);}}
+              onBlur={async (content)=>{setEditingNode(null);await onUpdateNode(node.id,{content});}}
+              onDelete={()=>onDeleteNode(node.id)}
+              onColorChange={color=>onUpdateNode(node.id,{color})}
+              onConnect={()=>{if(connecting==='__start__'){setConnecting(node.id);}else if(connecting){handleConnectTo(node.id);}}}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Board modal */}
+      {showBoardModal && (
+        <BoardModal
+          name={boardName} setName={setBoardName}
+          editId={editBoardId}
+          onSave={saveBoard}
+          onDelete={editBoardId ? async()=>{await onDeleteBoard(editBoardId);setActiveBoard(boards.find(b=>b.id!==editBoardId)?.id||null);setShowBoardModal(false);} : null}
+          onClose={()=>{setShowBoardModal(false);setEditBoardId(null);setBoardName('');}}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Canvas Node Component ──
+function CanvasNode({ node, selected, connecting, editing, onMouseDown, onResize, onDoubleClick, onBlur, onDelete, onColorChange, onConnect }) {
+  const [localContent, setLocalContent] = useState(node.content||'');
+  const taRef = useRef(null);
+  useEffect(() => { setLocalContent(node.content||''); }, [node.content]);
+  useEffect(() => { if (editing && taRef.current) { taRef.current.focus(); taRef.current.select(); } }, [editing]);
+
+  const isYT = node.type==='link' && (node.content?.includes('youtube.com') || node.content?.includes('youtu.be'));
+  const ytId = isYT ? (node.content?.match(/(?:v=|youtu\.be\/)([^&\s]+)/)?.[1]) : null;
+
+  return (
+    <div className={`cv-node${selected?' selected':''}${connecting?' connectable':''}`}
+      style={{ left:node.x, top:node.y, width:node.width, height:node.height, background:node.color, position:'absolute' }}
+      onMouseDown={onMouseDown}
+      onDoubleClick={onDoubleClick}>
+
+      {/* Note content */}
+      {node.type==='note' && (
+        editing ? (
+          <textarea ref={taRef} className="cv-note-editor"
+            value={localContent}
+            onChange={e=>setLocalContent(e.target.value)}
+            onBlur={()=>onBlur(localContent)}
+            onMouseDown={e=>e.stopPropagation()}
+          />
+        ) : (
+          <div className="cv-note-text" dangerouslySetInnerHTML={{
+            __html: localContent.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/==(.*?)==/g,'<mark>$1</mark>').replace(/\n/g,'<br/>')
+          }}/>
+        )
+      )}
+
+      {/* Image */}
+      {node.type==='image' && <img src={node.content} alt="" className="cv-img" draggable={false}/>}
+
+      {/* Link / YouTube */}
+      {node.type==='link' && (
+        isYT && ytId ? (
+          <iframe className="cv-iframe" src={`https://www.youtube.com/embed/${ytId}`} frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="YouTube"/>
+        ) : (
+          <div className="cv-link-card" onMouseDown={e=>e.stopPropagation()}>
+            <div className="cv-link-icon">🔗</div>
+            <div className="cv-link-url">{node.content}</div>
+            <a href={node.content} target="_blank" rel="noopener noreferrer" className="cv-link-open">Abrir →</a>
+          </div>
+        )
+      )}
+
+      {/* Controls (visible on hover/select) */}
+      <div className="cv-controls" onMouseDown={e=>e.stopPropagation()}>
+        <button className="cv-ctrl-btn cv-delete" onClick={onDelete} title="Excluir">✕</button>
+        <button className={`cv-ctrl-btn cv-connect${connecting?' connecting':''}`} onClick={onConnect} title="Conectar">⟵→</button>
+        <div className="cv-colors">
+          {(document.documentElement.getAttribute('data-theme')==='light' ? NODE_COLORS_LIGHT : NODE_COLORS).map(c=>(
+            <button key={c} className="cv-color-dot" style={{background:c,outline:node.color===c?'2px solid var(--acc)':''}} onClick={()=>onColorChange(c)}/>
+          ))}
+        </div>
+      </div>
+
+      {/* Resize handle */}
+      <div className="cv-resize" onMouseDown={e=>{e.stopPropagation();onResize(e);}}/>
+    </div>
+  );
+}
+
+// ── Board Modal ──
+function BoardModal({ name, setName, editId, onSave, onDelete, onClose }) {
+  return (
+    <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className="modal" onMouseDown={e=>e.stopPropagation()}>
+        <div className="modal-h"><div className="acc-dot"/>{editId?'Editar Quadro':'Novo Quadro'}</div>
+        <label className="mlabel" style={{marginTop:0}}>NOME</label>
+        <input className="minput" placeholder="Ex: Projetos, Ideias, Estudos..." value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&onSave()} autoFocus/>
+        <div className="modal-btns">
+          <button className="modal-save" onClick={onSave}>{editId?'SALVAR':'CRIAR'}</button>
+          {editId && onDelete && <button className="btn-del" style={{padding:'12px 14px'}} onClick={onDelete}>EXCLUIR</button>}
+          <button className="modal-close" onClick={onClose}>CANCELAR</button>
+        </div>
+      </div>
     </div>
   );
 }
