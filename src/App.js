@@ -1087,14 +1087,10 @@ function TaskModal({ editId, kbCols, kbTags, tTitle, setTTitle, tDesc, setTDesc,
     <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
       <div className="modal">
         <div className="modal-h"><div className="acc-dot"/>{editId?'Editar Tarefa':'Nova Tarefa'}</div>
-        <label className="mlabel" style={{marginTop:0}}>TÍTULO</label>
+        <label className="mlabel">TÍTULO</label>
         <input className="minput" placeholder="Descreva a tarefa..." value={tTitle} onChange={e=>setTTitle(e.target.value)} onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&onSave()} autoFocus/>
         <label className="mlabel">DESCRIÇÃO</label>
-        <textarea className="minput" placeholder="Detalhes opcionais..." value={tDesc} onChange={e=>setTDesc(e.target.value)}/>
-        <label className="mlabel">COLUNA</label>
-        <select className="mselect" value={tCol} onChange={e=>setTCol(e.target.value)}>
-          {kbCols.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}
-        </select>
+        <textarea className="minput" placeholder="Detalhes opcionais..." value={tDesc} onChange={e=>setTDesc(e.target.value)} style={{minHeight:140,resize:'vertical'}}/>
         {kbTags.length>0 && <>
           <label className="mlabel">ETIQUETAS</label>
           <div className="tag-grid">
