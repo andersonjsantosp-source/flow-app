@@ -174,6 +174,7 @@ function FlowApp({ session }) {
   const [kbTags,   setKbTags]   = useState([]);
   const [tasks,    setTasks]    = useState([]);
   const [entries,  setEntries]  = useState([]);  // journal entries
+  const [jFolders, setJFolders] = useState([]);  // journal folders
   const [routines, setRoutines] = useState([]);
   const [rBlocks,  setRBlocks]  = useState([]);
   const [rLogs,    setRLogs]    = useState({});  // { dateKey: [blockId,...] }
@@ -208,7 +209,7 @@ function FlowApp({ session }) {
   // ── Load all data ────────────────────────────────────
   useEffect(() => {
     async function load() {
-      const [hRes, lRes, cRes, tgRes, tkRes, jRes, rtRes, rbRes, rlRes, fsRes, feRes] = await Promise.all([
+      const [hRes, lRes, cRes, tgRes, tkRes, jRes, rtRes, rbRes, rlRes, fsRes, feRes, jfRes] = await Promise.all([
         supabase.from('habits').select('*').eq('user_id', uid).order('created_at'),
         supabase.from('habit_logs').select('*').eq('user_id', uid),
         supabase.from('kb_cols').select('*').eq('user_id', uid).order('position'),
@@ -220,6 +221,7 @@ function FlowApp({ session }) {
         supabase.from('routine_logs').select('*').eq('user_id', uid),
         supabase.from('finance_sheets').select('*').eq('user_id', uid).order('position'),
         supabase.from('finance_entries').select('*').eq('user_id', uid).order('position'),
+        supabase.from('journal_folders').select('*').eq('user_id', uid).order('position'),
       ]);
 
       setHabits(hRes.data || []);
@@ -252,6 +254,7 @@ function FlowApp({ session }) {
       const tk = tkRes.data || [];
       setTasks(tk);
       setEntries(jRes.data || []);
+      setJFolders(jfRes.data || []);
       setRoutines(rtRes.data || []);
       setRBlocks(rbRes.data || []);
       // Build rLogs map: { dateKey: [blockId,...] }
@@ -536,9 +539,28 @@ function FlowApp({ session }) {
     await supabase.from('finance_sheets').delete().eq('id', id);
   }, []);
 
+  // ── JOURNAL FOLDER ACTIONS ───────────────────────────
+  const addFolder = useCallback(async (name, icon, color) => {
+    const { data } = await supabase.from('journal_folders')
+      .insert({ user_id: uid, name, icon, color, position: jFolders.length }).select().single();
+    if (data) setJFolders(prev => [...prev, data]);
+    return data;
+  }, [uid, jFolders]);
+
+  const updateFolder = useCallback(async (id, patch) => {
+    setJFolders(prev => prev.map(f => f.id === id ? {...f, ...patch} : f));
+    await supabase.from('journal_folders').update(patch).eq('id', id);
+  }, []);
+
+  const deleteFolder = useCallback(async id => {
+    setJFolders(prev => prev.filter(f => f.id !== id));
+    setEntries(prev => prev.map(e => e.folder_id === id ? {...e, folder_id: null} : e));
+    await supabase.from('journal_folders').delete().eq('id', id);
+  }, []);
+
   // ── JOURNAL ACTIONS ──────────────────────────────────
   const saveEntry = useCallback(async (entryData) => {
-    const base = { title: entryData.title, body: entryData.body, mood: entryData.mood, tags: entryData.tags };
+    const base = { title: entryData.title, body: entryData.body, mood: entryData.mood, tags: entryData.tags, folder_id: entryData.folder_id || null };
     const withImg = { ...base, image_url: entryData.image_url };
     if (entryData.id) {
       // Try with image first, fallback without
@@ -670,7 +692,10 @@ function FlowApp({ session }) {
             />
           )}
           {page==='journal' && (
-            <JournalPage entries={entries} onSave={saveEntry} onDelete={deleteEntry}/>
+            <JournalPage entries={entries} folders={jFolders}
+              onSave={saveEntry} onDelete={deleteEntry}
+              onAddFolder={addFolder} onUpdateFolder={updateFolder} onDeleteFolder={deleteFolder}
+            />
           )}
           {page==='routine' && (
             <RoutinePage
@@ -1257,11 +1282,17 @@ const monthLabel = key => {
   return `${months[parseInt(m)-1]} ${y}`;
 };
 
-function JournalPage({ entries, onSave, onDelete }) {
+function JournalPage({ entries, folders, onSave, onDelete, onAddFolder, onUpdateFolder, onDeleteFolder }) {
   const [selectedId, setSelectedId]   = useState(null);
   const [isNew,      setIsNew]        = useState(false);
   const [search,     setSearch]       = useState('');
   const [filterMood, setFilterMood]   = useState(null);
+  const [activeFolderId, setActiveFolderId] = useState(null); // null = todos
+  const [showFolderModal, setShowFolderModal] = useState(false);
+  const [editFolderId, setEditFolderId] = useState(null);
+  const [fName,  setFName]  = useState('');
+  const [fIcon,  setFIcon]  = useState('📁');
+  const [fColor, setFColor] = useState('#5BA896');
   // Editor state
   const [eTitle,  setETitle]  = useState('');
   const [eBody,   setEBody]   = useState('');
@@ -1269,13 +1300,16 @@ function JournalPage({ entries, onSave, onDelete }) {
   const [eTags,   setETags]   = useState([]);
   const [eDate,   setEDate]   = useState(todayKey());
   const [eImage,  setEImage]  = useState(null);
+  const [eFolderId, setEFolderId] = useState(null);
   const [saving,  setSaving]  = useState(false);
   const [dirty,   setDirty]   = useState(false);
   const textRef = useRef(null);
 
+  const FOLDER_ICONS = ['📁','📂','💼','📚','🎬','🏋️','💡','🎵','✈️','🏠','💊','🎯','📝','🌱','⭐','🔬','🎨','💰','🏆','❤️'];
+  const FOLDER_COLORS = ['#5BA896','#4A7FAA','#7A6FAA','#AA6F7A','#AA8F4A','#6FAA6F','#AA6F4A','#4A9AAA'];
+
   const selected = entries.find(e => e.id === selectedId);
 
-  // On this day: entries from same month/day in previous years
   const today = todayKey();
   const [todayM, todayD] = today.split('-').slice(1);
   const onThisDay = entries.filter(e => {
@@ -1285,8 +1319,9 @@ function JournalPage({ entries, onSave, onDelete }) {
 
   const filtered = entries.filter(e => {
     const matchSearch = !search || e.title?.toLowerCase().includes(search.toLowerCase()) || e.body?.toLowerCase().includes(search.toLowerCase());
-    const matchMood = !filterMood || e.mood === filterMood;
-    return matchSearch && matchMood;
+    const matchMood   = !filterMood || e.mood === filterMood;
+    const matchFolder = activeFolderId === null ? true : e.folder_id === activeFolderId;
+    return matchSearch && matchMood && matchFolder;
   });
 
   const grouped = groupByMonth(filtered);
@@ -1295,39 +1330,44 @@ function JournalPage({ entries, onSave, onDelete }) {
     setSelectedId(e.id); setIsNew(false);
     setETitle(e.title||''); setEBody(e.body||'');
     setEMood(e.mood||'good'); setETags(e.tags||[]);
-    setEDate(e.entry_date); setEImage(e.image_url||null); setDirty(false);
+    setEDate(e.entry_date); setEImage(e.image_url||null);
+    setEFolderId(e.folder_id||null); setDirty(false);
   };
 
   const newEntry = () => {
     setSelectedId(null); setIsNew(true);
     setETitle(''); setEBody('');
     setEMood('good'); setETags([]);
-    setEDate(todayKey()); setEImage(null); setDirty(false);
+    setEDate(todayKey()); setEImage(null);
+    setEFolderId(activeFolderId); setDirty(false);
     setTimeout(() => textRef.current?.focus(), 50);
   };
 
   const save = async () => {
     if (!eBody.trim() && !eTitle.trim()) return;
     setSaving(true);
-    try {
-      const payload = {
-        id: isNew ? null : selectedId,
-        title: eTitle, body: eBody,
-        mood: eMood, tags: eTags,
-        entry_date: eDate,
-        image_url: eImage || null,
-      };
-      // If image is large, try without it first then update image separately
-      let result = await onSave(payload);
-      if (!result && eImage) {
-        // Retry without image (may be too large for single request)
-        result = await onSave({ ...payload, image_url: null });
-      }
-      if (result) { setSelectedId(result.id); setIsNew(false); }
-    } catch(e) {
-      console.error('Save error:', e);
-    }
+    const result = await onSave({
+      id: isNew ? null : selectedId,
+      title: eTitle, body: eBody,
+      mood: eMood, tags: eTags,
+      entry_date: eDate,
+      image_url: eImage || null,
+      folder_id: eFolderId || null,
+    });
+    if (result) { setSelectedId(result.id); setIsNew(false); }
     setDirty(false); setSaving(false);
+  };
+
+  const saveFolder = async () => {
+    if (!fName.trim()) return;
+    if (editFolderId) {
+      await onUpdateFolder(editFolderId, { name: fName, icon: fIcon, color: fColor });
+      setEditFolderId(null);
+    } else {
+      await onAddFolder(fName.trim(), fIcon, fColor);
+    }
+    setFName(''); setFIcon('📁'); setFColor('#5BA896');
+    setShowFolderModal(false);
   };
 
   const del = async () => {
@@ -1341,7 +1381,31 @@ function JournalPage({ entries, onSave, onDelete }) {
 
   return (
     <div className="journal-layout">
-      {/* ── LEFT: entries list ── */}
+      {/* ── FOLDERS PANEL ── */}
+      {(!showEditor || isDesktop) && (
+        <div className="journal-folders">
+          <div className="journal-folders-head">
+            <span className="journal-folders-label">PASTAS</span>
+            <button className="journal-folders-add" onClick={()=>{setEditFolderId(null);setFName('');setFIcon('📁');setFColor('#5BA896');setShowFolderModal(true);}}>+</button>
+          </div>
+          <button className={`journal-folder-item${activeFolderId===null?' active':''}`} onClick={()=>setActiveFolderId(null)}>
+            <span>📋</span><span className="journal-folder-name">Todas</span>
+            <span className="journal-folder-count">{entries.length}</span>
+          </button>
+          {folders.map(f => (
+            <button key={f.id} className={`journal-folder-item${activeFolderId===f.id?' active':''}`}
+              style={activeFolderId===f.id?{borderColor:f.color+'60',backgroundColor:f.color+'10'}:{}}
+              onClick={()=>setActiveFolderId(f.id)}
+              onDoubleClick={()=>{setEditFolderId(f.id);setFName(f.name);setFIcon(f.icon);setFColor(f.color);setShowFolderModal(true);}}>
+              <span>{f.icon}</span>
+              <span className="journal-folder-name" style={activeFolderId===f.id?{color:f.color}:{}}>{f.name}</span>
+              <span className="journal-folder-count">{entries.filter(e=>e.folder_id===f.id).length}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── LIST PANEL ── */}
       {(!showEditor || isDesktop) && (
         <div className="journal-list">
           {/* Search + new */}
@@ -1361,7 +1425,7 @@ function JournalPage({ entries, onSave, onDelete }) {
             ))}
           </div>
           {/* On this day */}
-          {onThisDay.length > 0 && !search && !filterMood && (
+          {onThisDay.length > 0 && !search && !filterMood && !activeFolderId && (
             <div className="journal-otd">
               <div className="journal-otd-label">✦ Neste dia</div>
               {onThisDay.map(e => (
@@ -1500,6 +1564,26 @@ Escreva livremente. Este é o seu espaço..."
               })}
             </div>
           </div>
+          {/* Folder selector */}
+          {folders.length > 0 && (
+            <div className="journal-tags-section" style={{borderTop:'1px solid var(--b1)'}}>
+              <div className="journal-tags-label">PASTA</div>
+              <div className="journal-tags-grid">
+                <button className={`journal-tag-btn${!eFolderId?' active':''}`}
+                  onClick={()=>{setEFolderId(null);setDirty(true);}}>
+                  📋 Nenhuma
+                </button>
+                {folders.map(f => (
+                  <button key={f.id}
+                    className={`journal-tag-btn${eFolderId===f.id?' active':''}`}
+                    style={eFolderId===f.id?{backgroundColor:f.color+'20',borderColor:f.color,color:f.color}:{}}
+                    onClick={()=>{setEFolderId(f.id);setDirty(true);}}>
+                    {f.icon} {f.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {/* Word count */}
           <div className="journal-wordcount">
             {eBody.trim() ? `${eBody.trim().split(/\s+/).length} palavras · ${eBody.length} caracteres` : ''}
@@ -1514,6 +1598,36 @@ Escreva livremente. Este é o seu espaço..."
             </div>
           </div>
         )
+      )}
+
+      {/* ── FOLDER MODAL ── */}
+      {showFolderModal && (
+        <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setShowFolderModal(false);}}>
+          <div className="modal">
+            <div className="modal-h"><div className="acc-dot"/>{editFolderId?'Editar Pasta':'Nova Pasta'}</div>
+            <label className="mlabel" style={{marginTop:0}}>NOME</label>
+            <input className="minput" placeholder="Ex: Trabalho, Treino, Filmes..." value={fName} onChange={e=>setFName(e.target.value)} autoFocus/>
+            <label className="mlabel">ÍCONE</label>
+            <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:4}}>
+              {FOLDER_ICONS.map(ic=>(
+                <button key={ic} className={`icon-btn${fIcon===ic?' sel':''}`} onClick={()=>setFIcon(ic)}>{ic}</button>
+              ))}
+            </div>
+            <label className="mlabel">COR</label>
+            <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:4}}>
+              {FOLDER_COLORS.map(c=>(
+                <button key={c} style={{width:26,height:26,borderRadius:5,background:c,border:`2px solid ${fColor===c?'var(--t1)':'transparent'}`,cursor:'pointer'}} onClick={()=>setFColor(c)}/>
+              ))}
+            </div>
+            <div className="modal-btns">
+              <button className="modal-save" onClick={saveFolder}>{editFolderId?'SALVAR':'CRIAR'}</button>
+              {editFolderId && (
+                <button className="btn-del" style={{padding:'12px 14px'}} onClick={async()=>{await onDeleteFolder(editFolderId);setShowFolderModal(false);setEditFolderId(null);if(activeFolderId===editFolderId)setActiveFolderId(null);}}>EXCLUIR</button>
+              )}
+              <button className="modal-close" onClick={()=>{setShowFolderModal(false);setEditFolderId(null);}}>CANCELAR</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
