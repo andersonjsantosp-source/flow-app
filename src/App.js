@@ -658,7 +658,7 @@ function FlowApp({ session }) {
 
       {/* ── MAIN ── */}
       <div className="main">
-      {page !== 'finance' && page !== 'home' && page !== 'calendar' && (
+      {page !== 'finance' && page !== 'home' && page !== 'calendar' && page !== 'journal' && (
         <div className="mod-header">
           <div className="mod-eyebrow fade">
             {page==='habits' ? {today:'ACOMPANHAMENTO DIÁRIO',week:'VISÃO 7 DIAS',stats:'ANÁLISE DE DESEMPENHO',manage:'GERENCIAMENTO'}[habTab]
@@ -682,7 +682,7 @@ function FlowApp({ session }) {
         </div>
       )}
 
-        <div className={page==='finance'||page==='home'||page==='calendar' ? 'finance-fullbody' : 'mod-body'}>
+        <div className={page==='finance'||page==='home'||page==='calendar'||page==='journal' ? 'finance-fullbody' : 'mod-body'}>
           {page==='home' && (
             <HomePage
               habits={habits} logs={logs} tasks={tasks} kbCols={kbCols}
