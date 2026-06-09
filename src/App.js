@@ -1296,7 +1296,7 @@ function TaskCard({ task, kbCols, kbTags, onEdit, onDelete, onMove, dragId }) {
     isDraggable.current = false;
     pressTimer.current = setTimeout(() => {
       isDraggable.current = true;
-    }, 300);
+    }, 200);
   };
 
   const onPointerUp = e => {
