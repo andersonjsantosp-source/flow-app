@@ -1287,11 +1287,38 @@ function KbCol({ col, tasks, kbCols, kbTags, onNewTask, onEditTask, onDeleteTask
 
 function TaskCard({ task, kbCols, kbTags, onEdit, onDelete, onMove, dragId }) {
   const [dragging, setDragging] = useState(false);
-  const colIdx = kbCols.findIndex(c=>c.id===task.col_id);
+  const pressTimer = useRef(null);
+  const isDraggable = useRef(false);
+
+  // Long press to enable drag, click to edit
+  const onPointerDown = e => {
+    if (e.button !== undefined && e.button !== 0) return;
+    isDraggable.current = false;
+    pressTimer.current = setTimeout(() => {
+      isDraggable.current = true;
+    }, 300);
+  };
+
+  const onPointerUp = e => {
+    clearTimeout(pressTimer.current);
+  };
+
+  const handleClick = e => {
+    if (!isDraggable.current) onEdit(task.id);
+  };
+
   return (
     <div className={`tc${dragging?' dragging':''}`}
-      draggable onDragStart={e=>{e.dataTransfer.setData('tid',task.id);setDragging(true);dragId.current=task.id;}}
-      onDragEnd={()=>{setDragging(false);dragId.current=null;}}>
+      draggable
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onClick={handleClick}
+      onDragStart={e=>{
+        if (!isDraggable.current) { e.preventDefault(); return; }
+        e.dataTransfer.setData('tid',task.id);
+        setDragging(true); dragId.current=task.id;
+      }}
+      onDragEnd={()=>{setDragging(false);dragId.current=null;isDraggable.current=false;}}>
       <div className="tc-title">{task.title}</div>
       {task.tags?.length>0 && (
         <div className="tc-tags">
@@ -1304,11 +1331,9 @@ function TaskCard({ task, kbCols, kbTags, onEdit, onDelete, onMove, dragId }) {
           {reminderPast(task.reminder)?'⏰':'🔔'} {new Date(task.reminder).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'})}
         </div>
       )}
+      {/* Delete button only */}
       <div className="tc-foot">
         <div className="tc-actions">
-          {colIdx>0 && <button className="tc-btn" title={'← '+kbCols[colIdx-1]?.label} onClick={e=>{e.stopPropagation();onMove(task.id,kbCols[colIdx-1].id);}}>←</button>}
-          {colIdx<kbCols.length-1 && <button className="tc-btn" title={'→ '+kbCols[colIdx+1]?.label} onClick={e=>{e.stopPropagation();onMove(task.id,kbCols[colIdx+1].id);}}>→</button>}
-          <button className="tc-btn" title="Editar" onClick={e=>{e.stopPropagation();onEdit(task.id);}}>✎</button>
           <button className="tc-btn danger" title="Excluir" onClick={e=>{e.stopPropagation();if(window.confirm('Excluir tarefa?'))onDelete(task.id);}}>✕</button>
         </div>
       </div>
