@@ -687,7 +687,7 @@ function FlowApp({ session }) {
             <HomePage
               habits={habits} logs={logs} tasks={tasks} kbCols={kbCols}
               entries={entries} routines={routines} rBlocks={rBlocks} rLogs={rLogs}
-              fSheets={fSheets} fEntries={fEntries}
+              fSheets={fSheets} fEntries={fEntries} calEvents={calEvents}
               onNavigate={setPage}
               userName={session.user.email?.split('@')[0]}
             />
@@ -2344,7 +2344,7 @@ function FinancePage({ sheets, entries, onAddSheet, onUpdateSheet, onDeleteSheet
 // ─────────────────────────────────────────────────────
 // HOME PAGE — Dashboard
 // ─────────────────────────────────────────────────────
-function HomePage({ habits, logs, tasks, kbCols, entries, routines, rBlocks, rLogs, fSheets, fEntries, onNavigate, userName }) {
+function HomePage({ habits, logs, tasks, kbCols, entries, routines, rBlocks, rLogs, fSheets, fEntries, calEvents, onNavigate, userName }) {
   const td = todayKey();
   const d  = new Date();
   const todayDow = d.getDay();
@@ -2354,6 +2354,17 @@ function HomePage({ habits, logs, tasks, kbCols, entries, routines, rBlocks, rLo
   const habPct     = habits.length > 0 ? Math.round(doneToday/habits.length*100) : 0;
   const l7         = lastN(7);
   const perfectDays= l7.filter(day => habits.length > 0 && (logs[day]||[]).length === habits.length).length;
+
+  // ── Calendar stats ──
+  const now = new Date();
+  const todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
+  const nextWeek = new Date(now.getTime() + 7*24*60*60*1000);
+  // Expand recurring events for next 7 days
+  const calInstances = typeof expandEvents === 'function'
+    ? expandEvents(calEvents||[], now, nextWeek)
+    : (calEvents||[]).filter(e=>new Date(e.start_at)>=now && new Date(e.start_at)<=nextWeek);
+  const todayEvents = calInstances.filter(e=>e.start_at?.startsWith(td));
+  const nextEvent   = calInstances.sort((a,b)=>new Date(a.start_at)-new Date(b.start_at))[0];
 
   // ── Kanban stats ──
   const totalTasks = tasks.length;
@@ -2528,7 +2539,6 @@ function HomePage({ habits, logs, tasks, kbCols, entries, routines, rBlocks, rLo
               <div className="home-fin-value">{fmtBRL(balance)}</div>
             </div>
           </div>
-          {/* Mini balance bar */}
           <div className="home-balance-bar">
             <div className="home-balance-bar-fill" style={{
               width: totalIncome > 0 ? `${Math.min(100, totalExpenses/totalIncome*100)}%` : '0%',
@@ -2536,6 +2546,41 @@ function HomePage({ habits, logs, tasks, kbCols, entries, routines, rBlocks, rLo
             }}/>
           </div>
           <div className="home-balance-label">{totalIncome > 0 ? `${Math.round(totalExpenses/totalIncome*100)}% da receita comprometida` : 'Sem dados'}</div>
+        </div>
+
+        {/* ─ Calendário ─ */}
+        <div className="home-card home-card-calendar" onClick={()=>onNavigate('calendar')}>
+          <div className="home-card-header">
+            <div className="home-card-ico">◫</div>
+            <div className="home-card-title">Calendário</div>
+            <div className="home-card-arrow">→</div>
+          </div>
+          {todayEvents.length > 0 ? (
+            <div style={{display:'flex',flexDirection:'column',gap:5,marginTop:4}}>
+              {todayEvents.slice(0,3).map(ev=>(
+                <div key={ev.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:'var(--r)',background:ev.color+'15',borderLeft:`2px solid ${ev.color}`}}>
+                  <div style={{flex:1,fontSize:12,fontWeight:600,color:'var(--t1)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{ev.title}</div>
+                  {!ev.all_day && <div style={{fontSize:10,color:'var(--t3)',fontFamily:'var(--fm)',flexShrink:0}}>{new Date(ev.start_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'})}</div>}
+                </div>
+              ))}
+              {todayEvents.length > 3 && <div style={{fontSize:10,color:'var(--t3)',fontFamily:'var(--fm)',paddingLeft:4}}>+{todayEvents.length-3} mais hoje</div>}
+            </div>
+          ) : nextEvent ? (
+            <div style={{marginTop:4}}>
+              <div style={{fontSize:10,color:'var(--t3)',fontFamily:'var(--fm)',letterSpacing:'.08em',marginBottom:6}}>PRÓXIMO EVENTO</div>
+              <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:'var(--r)',background:nextEvent.color+'15',borderLeft:`2px solid ${nextEvent.color}`}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:12,fontWeight:600,color:'var(--t1)',marginBottom:2}}>{nextEvent.title}</div>
+                  <div style={{fontSize:10,color:'var(--t3)',fontFamily:'var(--fm)'}}>
+                    {new Date(nextEvent.start_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',timeZone:'America/Sao_Paulo'})}
+                    {!nextEvent.all_day && ` · ${new Date(nextEvent.start_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'})}`}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="home-card-empty">Nenhum evento esta semana</div>
+          )}
         </div>
 
       </div>
