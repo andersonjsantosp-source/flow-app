@@ -180,6 +180,7 @@ function FlowApp({ session }) {
   const [rLogs,    setRLogs]    = useState({});  // { dateKey: [blockId,...] }
   const [fSheets,  setFSheets]  = useState([]);
   const [fEntries, setFEntries] = useState([]);
+  const [calEvents, setCalEvents] = useState([]);
   const [dataReady, setDataReady] = useState(false);
 
   // ── UI state ────────────────────────────────────────
@@ -209,7 +210,7 @@ function FlowApp({ session }) {
   // ── Load all data ────────────────────────────────────
   useEffect(() => {
     async function load() {
-      const [hRes, lRes, cRes, tgRes, tkRes, jRes, rtRes, rbRes, rlRes, fsRes, feRes, jfRes] = await Promise.all([
+      const [hRes, lRes, cRes, tgRes, tkRes, jRes, rtRes, rbRes, rlRes, fsRes, feRes, jfRes, ceRes] = await Promise.all([
         supabase.from('habits').select('*').eq('user_id', uid).order('created_at'),
         supabase.from('habit_logs').select('*').eq('user_id', uid),
         supabase.from('kb_cols').select('*').eq('user_id', uid).order('position'),
@@ -222,6 +223,7 @@ function FlowApp({ session }) {
         supabase.from('finance_sheets').select('*').eq('user_id', uid).order('position'),
         supabase.from('finance_entries').select('*').eq('user_id', uid).order('position'),
         supabase.from('journal_folders').select('*').eq('user_id', uid).order('position'),
+        supabase.from('calendar_events').select('*').eq('user_id', uid).order('start_at'),
       ]);
 
       setHabits(hRes.data || []);
@@ -278,6 +280,7 @@ function FlowApp({ session }) {
       }
       setFSheets(sheets);
       setFEntries(feRes.data || []);
+      setCalEvents(ceRes.data || []);
 
       if (cols.length > 0) setTCol(cols[0].id);
       setDataReady(true);
@@ -539,6 +542,24 @@ function FlowApp({ session }) {
     await supabase.from('finance_sheets').delete().eq('id', id);
   }, []);
 
+  // ── CALENDAR ACTIONS ─────────────────────────────────
+  const addCalEvent = useCallback(async (ev) => {
+    const { data } = await supabase.from('calendar_events')
+      .insert({ user_id: uid, ...ev }).select().single();
+    if (data) setCalEvents(prev => [...prev, data]);
+    return data;
+  }, [uid]);
+
+  const updateCalEvent = useCallback(async (id, patch) => {
+    setCalEvents(prev => prev.map(e => e.id === id ? {...e, ...patch} : e));
+    await supabase.from('calendar_events').update(patch).eq('id', id);
+  }, []);
+
+  const deleteCalEvent = useCallback(async id => {
+    setCalEvents(prev => prev.filter(e => e.id !== id));
+    await supabase.from('calendar_events').delete().eq('id', id);
+  }, []);
+
   // ── JOURNAL FOLDER ACTIONS ───────────────────────────
   const addFolder = useCallback(async (name, icon, color) => {
     const { data } = await supabase.from('journal_folders')
@@ -603,12 +624,13 @@ function FlowApp({ session }) {
         <div className="sb-scroll">
           <div className="sb-section-label">Módulos</div>
           {[
-            {id:'home',    ico:'⌂', label:'Início',   badge:''},
-            {id:'habits',  ico:'◎', label:'Hábitos',  badge:`${doneH}/${habits.length}`},
-            {id:'kanban',  ico:'⊞', label:'Kanban',   badge:`${tasks.length} tarefas`},
-            {id:'journal', ico:'✦', label:'Diário',   badge:`${entries.length} entradas`},
-            {id:'routine', ico:'◷', label:'Rotina',   badge:`${routines.length} rotinas`},
-            {id:'finance', ico:'₢', label:'Finanças', badge:`${fSheets.length} planilhas`},
+            {id:'home',     ico:'⌂', label:'Início',    badge:''},
+            {id:'habits',   ico:'◎', label:'Hábitos',   badge:`${doneH}/${habits.length}`},
+            {id:'kanban',   ico:'⊞', label:'Kanban',    badge:`${tasks.length} tarefas`},
+            {id:'journal',  ico:'✦', label:'Diário',    badge:`${entries.length} entradas`},
+            {id:'routine',  ico:'◷', label:'Rotina',    badge:`${routines.length} rotinas`},
+            {id:'finance',  ico:'₢', label:'Finanças',  badge:`${fSheets.length} planilhas`},
+            {id:'calendar', ico:'◫', label:'Calendário',badge:`${calEvents.length} eventos`},
           ].map(({id,ico,label,badge}) => (
             <button key={id} className={`sb-item ${page===id?'active':''}`} onClick={()=>setPage(id)}>
               <div className="sb-item-bar"/>
@@ -636,7 +658,7 @@ function FlowApp({ session }) {
 
       {/* ── MAIN ── */}
       <div className="main">
-      {page !== 'finance' && page !== 'home' && (
+      {page !== 'finance' && page !== 'home' && page !== 'calendar' && (
         <div className="mod-header">
           <div className="mod-eyebrow fade">
             {page==='habits' ? {today:'ACOMPANHAMENTO DIÁRIO',week:'VISÃO 7 DIAS',stats:'ANÁLISE DE DESEMPENHO',manage:'GERENCIAMENTO'}[habTab]
@@ -660,7 +682,7 @@ function FlowApp({ session }) {
         </div>
       )}
 
-        <div className={page==='finance'||page==='home' ? 'finance-fullbody' : 'mod-body'}>
+        <div className={page==='finance'||page==='home'||page==='calendar' ? 'finance-fullbody' : 'mod-body'}>
           {page==='home' && (
             <HomePage
               habits={habits} logs={logs} tasks={tasks} kbCols={kbCols}
@@ -712,12 +734,18 @@ function FlowApp({ session }) {
               onAddEntry={addFEntry} onUpdateEntry={updateFEntry} onDeleteEntry={deleteFEntry}
             />
           )}
+          {page==='calendar' && (
+            <CalendarPage
+              events={calEvents}
+              onAdd={addCalEvent} onUpdate={updateCalEvent} onDelete={deleteCalEvent}
+            />
+          )}
         </div>
       </div>
 
       {/* ── BOTTOM NAV ── */}
       <nav className="bnav">
-        {[{ico:'⌂',label:'INÍCIO',id:'home'},{ico:'◎',label:'HÁBITOS',id:'habits'},{ico:'⊞',label:'KANBAN',id:'kanban'},{ico:'✦',label:'DIÁRIO',id:'journal'},{ico:'◷',label:'ROTINA',id:'routine'},{ico:'₢',label:'FINANÇAS',id:'finance'}].map(({ico,label,id})=>(
+        {[{ico:'⌂',label:'INÍCIO',id:'home'},{ico:'◎',label:'HÁBITOS',id:'habits'},{ico:'⊞',label:'KANBAN',id:'kanban'},{ico:'✦',label:'DIÁRIO',id:'journal'},{ico:'◷',label:'ROTINA',id:'routine'},{ico:'₢',label:'FINANÇAS',id:'finance'},{ico:'◫',label:'AGENDA',id:'calendar'}].map(({ico,label,id})=>(
           <button key={id} className={page===id?'active':''} onClick={()=>setPage(id)}>
             <span className="bnav-ico">{ico}</span><span>{label}</span><div className="bnav-pip"/>
           </button>
@@ -2525,5 +2553,291 @@ function HomeRing({ pct, color, size=64 }) {
         strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round"
         style={{transition:'stroke-dashoffset .6s ease'}}/>
     </svg>
+  );
+}
+
+// ─────────────────────────────────────────────────────
+// CALENDAR PAGE
+// ─────────────────────────────────────────────────────
+const CAL_COLORS = ['#5BA896','#4A7FAA','#7A6FAA','#AA6F7A','#AA8F4A','#C45A6A','#6FAA6F','#AA6F4A'];
+const MONTHS_PT  = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const DAYS_PT    = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
+  const now = new Date();
+  const [viewYear,  setViewYear]  = useState(now.getFullYear());
+  const [viewMonth, setViewMonth] = useState(now.getMonth());
+  const [view,      setView]      = useState('month'); // 'month' | 'week' | 'agenda'
+  const [showModal, setShowModal] = useState(false);
+  const [editId,    setEditId]    = useState(null);
+  const [selDate,   setSelDate]   = useState(null);
+
+  // Event form
+  const [eTitle,  setETitle]  = useState('');
+  const [eDesc,   setEDesc]   = useState('');
+  const [eStart,  setEStart]  = useState('');
+  const [eEnd,    setEEnd]    = useState('');
+  const [eAllDay, setEAllDay] = useState(false);
+  const [eColor,  setEColor]  = useState('#5BA896');
+  const [eLoc,    setELoc]    = useState('');
+  const [eN1h,    setEN1h]    = useState(true);
+  const [eN1d,    setEN1d]    = useState(true);
+  const [eN1w,    setEN1w]    = useState(false);
+  const [saving,  setSaving]  = useState(false);
+
+  const openNew = (date) => {
+    setEditId(null);
+    const d = date || todayKey();
+    setETitle(''); setEDesc(''); setELoc(''); setEColor('#5BA896');
+    setEAllDay(false); setEN1h(true); setEN1d(true); setEN1w(false);
+    setEStart(`${d}T09:00`); setEEnd(`${d}T10:00`);
+    setShowModal(true);
+  };
+
+  const openEdit = (ev) => {
+    setEditId(ev.id);
+    setETitle(ev.title||''); setEDesc(ev.description||''); setELoc(ev.location||'');
+    setEColor(ev.color||'#5BA896'); setEAllDay(ev.all_day||false);
+    setEStart(ev.start_at?.slice(0,16)||''); setEEnd(ev.end_at?.slice(0,16)||'');
+    setEN1h(ev.notify_1h!==false); setEN1d(ev.notify_1d!==false); setEN1w(!!ev.notify_1w);
+    setShowModal(true);
+  };
+
+  const save = async () => {
+    if (!eTitle.trim() || !eStart) return;
+    setSaving(true);
+    const payload = {
+      title: eTitle, description: eDesc, location: eLoc, color: eColor,
+      all_day: eAllDay, start_at: new Date(eStart).toISOString(),
+      end_at: eEnd ? new Date(eEnd).toISOString() : null,
+      notify_1h: eN1h, notify_1d: eN1d, notify_1w: eN1w,
+      notified_1h: false, notified_1d: false, notified_1w: false,
+    };
+    if (editId) await onUpdate(editId, payload);
+    else await onAdd(payload);
+    setShowModal(false); setEditId(null); setSaving(false);
+  };
+
+  // ── Month helpers ──
+  const daysInMonth = (y,m) => new Date(y,m+1,0).getDate();
+  const firstDow    = (y,m) => new Date(y,m,1).getDay();
+
+  const prevMonth = () => { if (viewMonth===0){setViewMonth(11);setViewYear(y=>y-1);}else setViewMonth(m=>m-1); };
+  const nextMonth = () => { if (viewMonth===11){setViewMonth(0);setViewYear(y=>y+1);}else setViewMonth(m=>m+1); };
+
+  const eventsOnDay = (y,m,d) => {
+    const dk = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    return events.filter(e => e.start_at?.startsWith(dk));
+  };
+
+  const fmtTime = iso => {
+    if (!iso) return '';
+    return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'});
+  };
+  const fmtDateTime = iso => {
+    if (!iso) return '';
+    return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'});
+  };
+
+  // ── Upcoming events for agenda view ──
+  const upcoming = events
+    .filter(e => new Date(e.start_at) >= new Date(new Date().setHours(0,0,0,0)))
+    .sort((a,b) => new Date(a.start_at)-new Date(b.start_at))
+    .slice(0,50);
+
+  const todayStr = todayKey();
+  const dim = daysInMonth(viewYear, viewMonth);
+  const fdow = firstDow(viewYear, viewMonth);
+
+  return (
+    <div className="cal-page">
+      {/* ── HEADER ── */}
+      <div className="cal-header">
+        <div className="cal-nav">
+          <button className="cal-nav-btn" onClick={prevMonth}>‹</button>
+          <div className="cal-month-label">{MONTHS_PT[viewMonth]} {viewYear}</div>
+          <button className="cal-nav-btn" onClick={nextMonth}>›</button>
+        </div>
+        <div className="cal-view-tabs">
+          {[{id:'month',l:'Mês'},{id:'week',l:'Semana'},{id:'agenda',l:'Agenda'}].map(v=>(
+            <button key={v.id} className={`cal-view-tab${view===v.id?' active':''}`} onClick={()=>setView(v.id)}>{v.l}</button>
+          ))}
+        </div>
+        <button className="cal-new-btn" onClick={()=>openNew()}>+ Evento</button>
+      </div>
+
+      {/* ── MONTH VIEW ── */}
+      {view==='month' && (
+        <div className="cal-month">
+          <div className="cal-dow-row">
+            {DAYS_PT.map(d=><div key={d} className="cal-dow">{d}</div>)}
+          </div>
+          <div className="cal-grid">
+            {Array.from({length:fdow}).map((_,i)=><div key={`e${i}`} className="cal-cell cal-cell-empty"/>)}
+            {Array.from({length:dim}).map((_,i)=>{
+              const d = i+1;
+              const dk = `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+              const dayEvs = eventsOnDay(viewYear,viewMonth,d);
+              const isToday = dk===todayStr;
+              return (
+                <div key={d} className={`cal-cell${isToday?' today':''}`} onClick={()=>openNew(dk)}>
+                  <div className={`cal-day-num${isToday?' today':''}`}>{d}</div>
+                  <div className="cal-day-events">
+                    {dayEvs.slice(0,3).map(ev=>(
+                      <div key={ev.id} className="cal-ev-pill"
+                        style={{background:ev.color+'25',borderLeft:`2px solid ${ev.color}`,color:ev.color}}
+                        onClick={e=>{e.stopPropagation();openEdit(ev);}}>
+                        {!ev.all_day && <span style={{opacity:.8,marginRight:3}}>{fmtTime(ev.start_at)}</span>}
+                        {ev.title}
+                      </div>
+                    ))}
+                    {dayEvs.length>3 && <div className="cal-ev-more">+{dayEvs.length-3} mais</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── AGENDA VIEW ── */}
+      {view==='agenda' && (
+        <div className="cal-agenda">
+          {upcoming.length===0 ? (
+            <div className="empty" style={{paddingTop:60}}>
+              <div className="empty-ico">◫</div>
+              <div className="empty-h">Nenhum evento próximo</div>
+              <div className="empty-s">Clique em "+ Evento" para adicionar</div>
+            </div>
+          ) : (() => {
+            // Group by date
+            const groups = {};
+            upcoming.forEach(ev => {
+              const dk = ev.start_at?.slice(0,10);
+              if (!groups[dk]) groups[dk] = [];
+              groups[dk].push(ev);
+            });
+            return Object.keys(groups).map(dk => {
+              const [y,m,d] = dk.split('-').map(Number);
+              const isToday = dk===todayStr;
+              const label   = isToday ? 'Hoje' : `${DAYS_PT[new Date(y,m-1,d).getDay()]}, ${d} de ${MONTHS_PT[m-1]}`;
+              return (
+                <div key={dk} className="cal-agenda-group">
+                  <div className={`cal-agenda-date${isToday?' today':''}`}>{label}</div>
+                  {groups[dk].map(ev=>(
+                    <div key={ev.id} className="cal-agenda-ev" style={{borderLeft:`3px solid ${ev.color}`}}
+                      onClick={()=>openEdit(ev)}>
+                      <div className="cal-agenda-ev-time">
+                        {ev.all_day ? 'Dia inteiro' : `${fmtTime(ev.start_at)}${ev.end_at?` – ${fmtTime(ev.end_at)}`:''}`}
+                      </div>
+                      <div className="cal-agenda-ev-title">{ev.title}</div>
+                      {ev.location && <div className="cal-agenda-ev-loc">📍 {ev.location}</div>}
+                    </div>
+                  ))}
+                </div>
+              );
+            });
+          })()}
+        </div>
+      )}
+
+      {/* ── WEEK VIEW ── */}
+      {view==='week' && (() => {
+        const startOfWeek = new Date();
+        startOfWeek.setHours(0,0,0,0);
+        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+        const weekDays = Array.from({length:7},(_,i)=>{
+          const d = new Date(startOfWeek); d.setDate(d.getDate()+i); return d;
+        });
+        return (
+          <div className="cal-week">
+            {weekDays.map(d=>{
+              const dk = toK(d);
+              const isToday = dk===todayStr;
+              const dayEvs  = events.filter(e=>e.start_at?.startsWith(dk)).sort((a,b)=>a.start_at.localeCompare(b.start_at));
+              return (
+                <div key={dk} className={`cal-week-col${isToday?' today':''}`}>
+                  <div className="cal-week-head">
+                    <div className="cal-week-dow">{DAYS_PT[d.getDay()]}</div>
+                    <div className={`cal-week-day${isToday?' today':''}`}>{d.getDate()}</div>
+                  </div>
+                  <div className="cal-week-events" onClick={()=>openNew(dk)}>
+                    {dayEvs.map(ev=>(
+                      <div key={ev.id} className="cal-week-ev"
+                        style={{background:ev.color+'20',borderLeft:`2px solid ${ev.color}`,color:ev.color}}
+                        onClick={e=>{e.stopPropagation();openEdit(ev);}}>
+                        <div style={{fontWeight:600,fontSize:11,marginBottom:2}}>{ev.title}</div>
+                        {!ev.all_day && <div style={{fontSize:10,opacity:.8}}>{fmtTime(ev.start_at)}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      {/* ── EVENT MODAL ── */}
+      {showModal && (
+        <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setShowModal(false);}}>
+          <div className="modal" style={{maxWidth:520}}>
+            <div className="modal-h"><div className="acc-dot"/>{editId?'Editar Evento':'Novo Evento'}</div>
+            <label className="mlabel" style={{marginTop:0}}>TÍTULO</label>
+            <input className="minput" placeholder="Ex: Reunião, Médico, Aniversário..." value={eTitle} onChange={e=>setETitle(e.target.value)} autoFocus/>
+            <label className="mlabel">LOCALIZAÇÃO</label>
+            <input className="minput" placeholder="📍 Local ou link..." value={eLoc} onChange={e=>setELoc(e.target.value)}/>
+            <div style={{display:'flex',alignItems:'center',gap:10,margin:'8px 0 4px'}}>
+              <input type="checkbox" id="allday" checked={eAllDay} onChange={e=>setEAllDay(e.target.checked)} style={{accentColor:'var(--acc)',width:16,height:16}}/>
+              <label htmlFor="allday" style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--t2)',letterSpacing:'.1em',cursor:'pointer'}}>DIA INTEIRO</label>
+            </div>
+            {!eAllDay && (
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                <div>
+                  <label className="mlabel">INÍCIO</label>
+                  <input className="minput reminder-input" type="datetime-local" value={eStart} onChange={e=>setEStart(e.target.value)}/>
+                </div>
+                <div>
+                  <label className="mlabel">FIM</label>
+                  <input className="minput reminder-input" type="datetime-local" value={eEnd} onChange={e=>setEEnd(e.target.value)}/>
+                </div>
+              </div>
+            )}
+            {eAllDay && (
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                <div>
+                  <label className="mlabel">DATA INÍCIO</label>
+                  <input className="minput reminder-input" type="date" value={eStart?.slice(0,10)||''} onChange={e=>setEStart(e.target.value+'T00:00')}/>
+                </div>
+                <div>
+                  <label className="mlabel">DATA FIM</label>
+                  <input className="minput reminder-input" type="date" value={eEnd?.slice(0,10)||''} onChange={e=>setEEnd(e.target.value+'T23:59')}/>
+                </div>
+              </div>
+            )}
+            <label className="mlabel">COR</label>
+            <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:4}}>
+              {CAL_COLORS.map(c=><button key={c} style={{width:26,height:26,borderRadius:5,background:c,border:`2px solid ${eColor===c?'var(--t1)':'transparent'}`,cursor:'pointer',transition:'all .12s'}} onClick={()=>setEColor(c)}/>)}
+            </div>
+            <label className="mlabel">NOTIFICAÇÕES</label>
+            <div style={{display:'flex',gap:12,marginBottom:4,flexWrap:'wrap'}}>
+              {[{k:'1h',v:eN1h,s:setEN1h,l:'1 hora antes'},{k:'1d',v:eN1d,s:setEN1d,l:'1 dia antes'},{k:'1w',v:eN1w,s:setEN1w,l:'1 semana antes'}].map(n=>(
+                <label key={n.k} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}>
+                  <input type="checkbox" checked={n.v} onChange={e=>n.s(e.target.checked)} style={{accentColor:'var(--acc)',width:15,height:15}}/>
+                  <span style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--t2)',letterSpacing:'.06em'}}>{n.l}</span>
+                </label>
+              ))}
+            </div>
+            <label className="mlabel">DESCRIÇÃO</label>
+            <textarea className="minput" placeholder="Notas sobre o evento..." value={eDesc} onChange={e=>setEDesc(e.target.value)} style={{minHeight:60,resize:'vertical'}}/>
+            <div className="modal-btns">
+              <button className="modal-save" onClick={save} disabled={saving}>{saving?'...':editId?'SALVAR':'CRIAR'}</button>
+              {editId && <button className="btn-del" style={{padding:'12px 14px'}} onClick={async()=>{await onDelete(editId);setShowModal(false);}}>EXCLUIR</button>}
+              <button className="modal-close" onClick={()=>{setShowModal(false);setEditId(null);}}>CANCELAR</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
