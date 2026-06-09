@@ -473,8 +473,9 @@ textarea.minput{resize:vertical;min-height:72px;line-height:1.5;}
   display: flex;
   gap: 0;
   height: 100%;
-  margin: -28px -40px -48px;
+  margin: 0;
   overflow: hidden;
+  flex: 1;
 }
 
 /* ── LIST PANEL ── */
@@ -860,7 +861,7 @@ textarea.minput{resize:vertical;min-height:72px;line-height:1.5;}
 
 /* ── MOBILE ── */
 @media (max-width: 860px) {
-  .journal-layout { margin: -20px -18px -92px; flex-direction: column; overflow: visible; }
+  .journal-layout { margin: 0; flex-direction: column; overflow: visible; }
   .journal-list { width: 100%; height: auto; border-right: none; border-bottom: 1px solid var(--b2); max-height: none; }
   .journal-editor { min-height: 80vh; }
   .journal-title-input { padding: 16px 18px 8px; font-size: 19px; }
@@ -1536,7 +1537,7 @@ textarea.minput{resize:vertical;min-height:72px;line-height:1.5;}
 :root[data-theme="light"] .reminder-input { color-scheme: light; color: var(--t1) !important; }
 
 /* ── JOURNAL FOLDERS ── */
-.journal-layout { display:flex; gap:0; height:100%; margin:-28px -40px -48px; overflow:hidden; }
+.journal-layout { display:flex; gap:0; height:100%; margin:0; overflow:hidden; flex:1; }
 .journal-folders {
   width: 180px; flex-shrink:0;
   border-right: 1px solid var(--b2);
