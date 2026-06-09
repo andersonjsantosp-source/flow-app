@@ -2556,23 +2556,86 @@ function HomeRing({ pct, color, size=64 }) {
   );
 }
 
+
 // ─────────────────────────────────────────────────────
 // CALENDAR PAGE
 // ─────────────────────────────────────────────────────
-const CAL_COLORS = ['#5BA896','#4A7FAA','#7A6FAA','#AA6F7A','#AA8F4A','#C45A6A','#6FAA6F','#AA6F4A'];
-const MONTHS_PT  = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-const DAYS_PT    = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const CAL_COLORS  = ['#5BA896','#4A7FAA','#7A6FAA','#AA6F7A','#AA8F4A','#C45A6A','#6FAA6F','#AA6F4A'];
+const MONTHS_PT   = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const MONTHS_SHORT= ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const DAYS_PT     = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const RECURRENCES = [
+  {id:'none',   label:'Não repetir'},
+  {id:'daily',  label:'Todo dia'},
+  {id:'weekly', label:'Toda semana'},
+  {id:'monthly',label:'Todo mês'},
+  {id:'yearly', label:'Todo ano'},
+];
+
+// ── helpers ──
+const dateKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const addDays  = (d,n) => { const r=new Date(d); r.setDate(r.getDate()+n); return r; };
+const isSameDay= (a,b) => dateKey(a)===dateKey(b);
+const startOfDay=d => { const r=new Date(d); r.setHours(0,0,0,0); return r; };
+const endOfDay  =d => { const r=new Date(d); r.setHours(23,59,59,999); return r; };
+
+// ── Expand recurring events into instances within a window ──
+function expandEvents(events, windowStart, windowEnd) {
+  const instances = [];
+  for (const ev of events) {
+    const start = new Date(ev.start_at);
+    const end   = ev.end_at ? new Date(ev.end_at) : new Date(start);
+    const dur   = end - start; // duration in ms
+
+    if (ev.recurrence === 'none' || !ev.recurrence) {
+      if (start <= windowEnd && end >= windowStart) instances.push(ev);
+      continue;
+    }
+
+    // Generate occurrences
+    let cur = new Date(start);
+    let safetyCount = 0;
+    while (cur <= windowEnd && safetyCount++ < 500) {
+      const occEnd = new Date(cur.getTime() + dur);
+      if (cur >= windowStart) {
+        instances.push({
+          ...ev,
+          id: `${ev.id}_${dateKey(cur)}`,
+          _baseId: ev.id,
+          start_at: cur.toISOString(),
+          end_at: occEnd.toISOString(),
+        });
+      }
+      // Advance by recurrence
+      const next = new Date(cur);
+      if (ev.recurrence === 'daily')   next.setDate(next.getDate()+1);
+      else if (ev.recurrence === 'weekly')  next.setDate(next.getDate()+7);
+      else if (ev.recurrence === 'monthly') next.setMonth(next.getMonth()+1);
+      else if (ev.recurrence === 'yearly')  next.setFullYear(next.getFullYear()+1);
+      cur = next;
+    }
+  }
+  return instances;
+}
+
+// ── Get all event spans touching a specific day ──
+function eventsOnDaySpan(instances, dk) {
+  return instances.filter(ev => {
+    const s = dateKey(new Date(ev.start_at));
+    const e = dateKey(new Date(ev.end_at || ev.start_at));
+    return s <= dk && e >= dk;
+  });
+}
 
 function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
   const now = new Date();
   const [viewYear,  setViewYear]  = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth());
-  const [view,      setView]      = useState('month'); // 'month' | 'week' | 'agenda'
+  const [view,      setView]      = useState('month');
   const [showModal, setShowModal] = useState(false);
   const [editId,    setEditId]    = useState(null);
-  const [selDate,   setSelDate]   = useState(null);
 
-  // Event form
+  // Form state
   const [eTitle,  setETitle]  = useState('');
   const [eDesc,   setEDesc]   = useState('');
   const [eStart,  setEStart]  = useState('');
@@ -2580,6 +2643,7 @@ function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
   const [eAllDay, setEAllDay] = useState(false);
   const [eColor,  setEColor]  = useState('#5BA896');
   const [eLoc,    setELoc]    = useState('');
+  const [eRecur,  setERecur]  = useState('none');
   const [eN1h,    setEN1h]    = useState(true);
   const [eN1d,    setEN1d]    = useState(true);
   const [eN1w,    setEN1w]    = useState(false);
@@ -2590,16 +2654,20 @@ function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
     const d = date || todayKey();
     setETitle(''); setEDesc(''); setELoc(''); setEColor('#5BA896');
     setEAllDay(false); setEN1h(true); setEN1d(true); setEN1w(false);
+    setERecur('none');
     setEStart(`${d}T09:00`); setEEnd(`${d}T10:00`);
     setShowModal(true);
   };
 
   const openEdit = (ev) => {
-    setEditId(ev.id);
-    setETitle(ev.title||''); setEDesc(ev.description||''); setELoc(ev.location||'');
-    setEColor(ev.color||'#5BA896'); setEAllDay(ev.all_day||false);
-    setEStart(ev.start_at?.slice(0,16)||''); setEEnd(ev.end_at?.slice(0,16)||'');
-    setEN1h(ev.notify_1h!==false); setEN1d(ev.notify_1d!==false); setEN1w(!!ev.notify_1w);
+    const baseId = ev._baseId || ev.id;
+    const base   = events.find(e => e.id === baseId) || ev;
+    setEditId(baseId);
+    setETitle(base.title||''); setEDesc(base.description||''); setELoc(base.location||'');
+    setEColor(base.color||'#5BA896'); setEAllDay(base.all_day||false);
+    setEStart(base.start_at?.slice(0,16)||''); setEEnd(base.end_at?.slice(0,16)||'');
+    setEN1h(base.notify_1h!==false); setEN1d(base.notify_1d!==false); setEN1w(!!base.notify_1w);
+    setERecur(base.recurrence||'none');
     setShowModal(true);
   };
 
@@ -2611,6 +2679,7 @@ function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
       all_day: eAllDay, start_at: new Date(eStart).toISOString(),
       end_at: eEnd ? new Date(eEnd).toISOString() : null,
       notify_1h: eN1h, notify_1d: eN1d, notify_1w: eN1w,
+      recurrence: eRecur,
       notified_1h: false, notified_1d: false, notified_1w: false,
     };
     if (editId) await onUpdate(editId, payload);
@@ -2618,36 +2687,65 @@ function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
     setShowModal(false); setEditId(null); setSaving(false);
   };
 
-  // ── Month helpers ──
-  const daysInMonth = (y,m) => new Date(y,m+1,0).getDate();
-  const firstDow    = (y,m) => new Date(y,m,1).getDay();
+  // ── Window for current month view ──
+  const windowStart = new Date(viewYear, viewMonth, 1);
+  const windowEnd   = new Date(viewYear, viewMonth+1, 0, 23, 59, 59);
+  // Expand 2 months each side for safety
+  const bigWindowStart = new Date(viewYear, viewMonth-1, 1);
+  const bigWindowEnd   = new Date(viewYear, viewMonth+2, 0, 23, 59, 59);
+  const instances = expandEvents(events, bigWindowStart, bigWindowEnd);
 
-  const prevMonth = () => { if (viewMonth===0){setViewMonth(11);setViewYear(y=>y-1);}else setViewMonth(m=>m-1); };
-  const nextMonth = () => { if (viewMonth===11){setViewMonth(0);setViewYear(y=>y+1);}else setViewMonth(m=>m+1); };
-
-  const eventsOnDay = (y,m,d) => {
-    const dk = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    return events.filter(e => e.start_at?.startsWith(dk));
-  };
-
-  const fmtTime = iso => {
-    if (!iso) return '';
-    return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'});
-  };
-  const fmtDateTime = iso => {
-    if (!iso) return '';
-    return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'});
-  };
-
-  // ── Upcoming events for agenda view ──
-  const upcoming = events
-    .filter(e => new Date(e.start_at) >= new Date(new Date().setHours(0,0,0,0)))
-    .sort((a,b) => new Date(a.start_at)-new Date(b.start_at))
-    .slice(0,50);
-
+  const dim  = new Date(viewYear, viewMonth+1, 0).getDate();
+  const fdow = new Date(viewYear, viewMonth, 1).getDay();
   const todayStr = todayKey();
-  const dim = daysInMonth(viewYear, viewMonth);
-  const fdow = firstDow(viewYear, viewMonth);
+
+  const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'}) : '';
+  const prevMonth = () => { if(viewMonth===0){setViewMonth(11);setViewYear(y=>y-1);}else setViewMonth(m=>m-1); };
+  const nextMonth = () => { if(viewMonth===11){setViewMonth(0);setViewYear(y=>y+1);}else setViewMonth(m=>m+1); };
+
+  // ── Build multi-day event rows for month grid ──
+  // Each event gets a "row" (track) within its span to avoid overlaps
+  const buildMonthRows = () => {
+    // Filter to events spanning this month
+    const monthInsts = instances.filter(ev => {
+      const s = new Date(ev.start_at);
+      const e = new Date(ev.end_at || ev.start_at);
+      return s <= windowEnd && e >= windowStart;
+    }).sort((a,b) => new Date(a.start_at)-new Date(b.start_at));
+
+    // Assign tracks
+    const tracks = []; // array of {ev, startDayIdx, endDayIdx}
+    const occupied = {}; // {track: lastDayIdx}
+    const result = [];
+
+    for (const ev of monthInsts) {
+      const s   = new Date(ev.start_at);
+      const e   = new Date(ev.end_at || ev.start_at);
+      const sDay= Math.max(1, s.getFullYear()===viewYear && s.getMonth()===viewMonth ? s.getDate() : 1);
+      const eDay= Math.min(dim, e.getFullYear()===viewYear && e.getMonth()===viewMonth ? e.getDate() : dim);
+
+      // Find available track
+      let track = 0;
+      while (occupied[track] !== undefined && occupied[track] >= sDay) track++;
+      occupied[track] = eDay;
+      result.push({ ev, sDay, eDay, track });
+    }
+    return result;
+  };
+
+  const monthRows = buildMonthRows();
+
+  // Get events for a specific day cell
+  const dayEvents = (day) => {
+    const dk = `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    return monthRows.filter(r => r.sDay <= day && r.eDay >= day);
+  };
+
+  // ── Upcoming for agenda ──
+  const agendaInstances = expandEvents(events,
+    startOfDay(new Date()),
+    new Date(now.getFullYear()+2, now.getMonth(), now.getDate())
+  ).sort((a,b)=>new Date(a.start_at)-new Date(b.start_at)).slice(0,80);
 
   return (
     <div className="cal-page">
@@ -2675,23 +2773,48 @@ function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
           <div className="cal-grid">
             {Array.from({length:fdow}).map((_,i)=><div key={`e${i}`} className="cal-cell cal-cell-empty"/>)}
             {Array.from({length:dim}).map((_,i)=>{
-              const d = i+1;
-              const dk = `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-              const dayEvs = eventsOnDay(viewYear,viewMonth,d);
+              const day = i+1;
+              const dk  = `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
               const isToday = dk===todayStr;
+              const rows = dayEvents(day);
+              // Max track to know cell height
+              const maxTrack = rows.length > 0 ? Math.max(...rows.map(r=>r.track)) : -1;
+
               return (
-                <div key={d} className={`cal-cell${isToday?' today':''}`} onClick={()=>openNew(dk)}>
-                  <div className={`cal-day-num${isToday?' today':''}`}>{d}</div>
-                  <div className="cal-day-events">
-                    {dayEvs.slice(0,3).map(ev=>(
-                      <div key={ev.id} className="cal-ev-pill"
-                        style={{background:ev.color+'25',borderLeft:`2px solid ${ev.color}`,color:ev.color}}
-                        onClick={e=>{e.stopPropagation();openEdit(ev);}}>
-                        {!ev.all_day && <span style={{opacity:.8,marginRight:3}}>{fmtTime(ev.start_at)}</span>}
-                        {ev.title}
-                      </div>
-                    ))}
-                    {dayEvs.length>3 && <div className="cal-ev-more">+{dayEvs.length-3} mais</div>}
+                <div key={day} className={`cal-cell${isToday?' today':''}`}
+                  style={{minHeight: Math.max(70, (maxTrack+2)*22+28)}}
+                  onClick={()=>openNew(dk)}>
+                  <div className={`cal-day-num${isToday?' today':''}`}>{day}</div>
+                  {/* Multi-day event bars */}
+                  <div className="cal-day-multirow" style={{position:'relative',height:(maxTrack+1)*22}}>
+                    {rows.map(({ev,sDay,eDay,track})=>{
+                      const isStart = sDay===day;
+                      const isEnd   = eDay===day;
+                      // Calculate width: spans to end of week or end of event
+                      const dowOfDay = (fdow + day - 1) % 7;
+                      const daysLeft = 6 - dowOfDay; // days until end of row
+                      const spanDays = Math.min(eDay-day, daysLeft) + 1;
+                      return (
+                        <div key={ev.id} className="cal-multiday-bar"
+                          style={{
+                            top: track*22,
+                            left: isStart ? 2 : 0,
+                            right: isEnd || daysLeft===0 ? 2 : 0,
+                            width: isStart && !isEnd && daysLeft>0 ? `calc(${spanDays*100}% - 4px)` : undefined,
+                            background: ev.color+'25',
+                            borderLeft: isStart ? `3px solid ${ev.color}` : 'none',
+                            borderRadius: isStart ? '4px 0 0 4px' : isEnd ? '0 4px 4px 0' : '0',
+                            color: ev.color,
+                            zIndex: track+1,
+                          }}
+                          onClick={e=>{e.stopPropagation();openEdit(ev);}}>
+                          {isStart && <span style={{fontWeight:600,fontSize:10,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',display:'block'}}>
+                            {!ev.all_day && <span style={{opacity:.75,marginRight:3}}>{fmtTime(ev.start_at)}</span>}
+                            {ev.title}
+                          </span>}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -2703,16 +2826,15 @@ function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
       {/* ── AGENDA VIEW ── */}
       {view==='agenda' && (
         <div className="cal-agenda">
-          {upcoming.length===0 ? (
+          {agendaInstances.length===0 ? (
             <div className="empty" style={{paddingTop:60}}>
               <div className="empty-ico">◫</div>
               <div className="empty-h">Nenhum evento próximo</div>
               <div className="empty-s">Clique em "+ Evento" para adicionar</div>
             </div>
           ) : (() => {
-            // Group by date
             const groups = {};
-            upcoming.forEach(ev => {
+            agendaInstances.forEach(ev => {
               const dk = ev.start_at?.slice(0,10);
               if (!groups[dk]) groups[dk] = [];
               groups[dk].push(ev);
@@ -2720,7 +2842,8 @@ function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
             return Object.keys(groups).map(dk => {
               const [y,m,d] = dk.split('-').map(Number);
               const isToday = dk===todayStr;
-              const label   = isToday ? 'Hoje' : `${DAYS_PT[new Date(y,m-1,d).getDay()]}, ${d} de ${MONTHS_PT[m-1]}`;
+              const dow     = new Date(y,m-1,d).getDay();
+              const label   = isToday ? 'Hoje' : `${DAYS_PT[dow]}, ${d} de ${MONTHS_PT[m-1]}`;
               return (
                 <div key={dk} className="cal-agenda-group">
                   <div className={`cal-agenda-date${isToday?' today':''}`}>{label}</div>
@@ -2729,6 +2852,7 @@ function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
                       onClick={()=>openEdit(ev)}>
                       <div className="cal-agenda-ev-time">
                         {ev.all_day ? 'Dia inteiro' : `${fmtTime(ev.start_at)}${ev.end_at?` – ${fmtTime(ev.end_at)}`:''}`}
+                        {ev.recurrence && ev.recurrence!=='none' && <span className="cal-recur-badge">↻ {RECURRENCES.find(r=>r.id===ev.recurrence)?.label||''}</span>}
                       </div>
                       <div className="cal-agenda-ev-title">{ev.title}</div>
                       {ev.location && <div className="cal-agenda-ev-loc">📍 {ev.location}</div>}
@@ -2746,15 +2870,16 @@ function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
         const startOfWeek = new Date();
         startOfWeek.setHours(0,0,0,0);
         startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-        const weekDays = Array.from({length:7},(_,i)=>{
-          const d = new Date(startOfWeek); d.setDate(d.getDate()+i); return d;
-        });
+        const weekDays = Array.from({length:7},(_,i)=>{ const d=new Date(startOfWeek); d.setDate(d.getDate()+i); return d; });
+        const wStart = weekDays[0], wEnd = addDays(weekDays[6],1);
+        const wInst  = expandEvents(events, wStart, wEnd);
+
         return (
           <div className="cal-week">
             {weekDays.map(d=>{
-              const dk = toK(d);
+              const dk = dateKey(d);
               const isToday = dk===todayStr;
-              const dayEvs  = events.filter(e=>e.start_at?.startsWith(dk)).sort((a,b)=>a.start_at.localeCompare(b.start_at));
+              const dayEvs  = wInst.filter(e=>e.start_at?.startsWith(dk)).sort((a,b)=>a.start_at.localeCompare(b.start_at));
               return (
                 <div key={dk} className={`cal-week-col${isToday?' today':''}`}>
                   <div className="cal-week-head">
@@ -2766,8 +2891,9 @@ function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
                       <div key={ev.id} className="cal-week-ev"
                         style={{background:ev.color+'20',borderLeft:`2px solid ${ev.color}`,color:ev.color}}
                         onClick={e=>{e.stopPropagation();openEdit(ev);}}>
-                        <div style={{fontWeight:600,fontSize:11,marginBottom:2}}>{ev.title}</div>
+                        <div style={{fontWeight:600,fontSize:11,marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{ev.title}</div>
                         {!ev.all_day && <div style={{fontSize:10,opacity:.8}}>{fmtTime(ev.start_at)}</div>}
+                        {ev.recurrence&&ev.recurrence!=='none'&&<div style={{fontSize:9,opacity:.6}}>↻</div>}
                       </div>
                     ))}
                   </div>
@@ -2784,14 +2910,14 @@ function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
           <div className="modal" style={{maxWidth:520}}>
             <div className="modal-h"><div className="acc-dot"/>{editId?'Editar Evento':'Novo Evento'}</div>
             <label className="mlabel" style={{marginTop:0}}>TÍTULO</label>
-            <input className="minput" placeholder="Ex: Reunião, Médico, Aniversário..." value={eTitle} onChange={e=>setETitle(e.target.value)} autoFocus/>
+            <input className="minput" placeholder="Ex: Reunião, Aniversário, Médico..." value={eTitle} onChange={e=>setETitle(e.target.value)} autoFocus/>
             <label className="mlabel">LOCALIZAÇÃO</label>
             <input className="minput" placeholder="📍 Local ou link..." value={eLoc} onChange={e=>setELoc(e.target.value)}/>
             <div style={{display:'flex',alignItems:'center',gap:10,margin:'8px 0 4px'}}>
               <input type="checkbox" id="allday" checked={eAllDay} onChange={e=>setEAllDay(e.target.checked)} style={{accentColor:'var(--acc)',width:16,height:16}}/>
               <label htmlFor="allday" style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--t2)',letterSpacing:'.1em',cursor:'pointer'}}>DIA INTEIRO</label>
             </div>
-            {!eAllDay && (
+            {!eAllDay ? (
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 <div>
                   <label className="mlabel">INÍCIO</label>
@@ -2802,8 +2928,7 @@ function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
                   <input className="minput reminder-input" type="datetime-local" value={eEnd} onChange={e=>setEEnd(e.target.value)}/>
                 </div>
               </div>
-            )}
-            {eAllDay && (
+            ) : (
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 <div>
                   <label className="mlabel">DATA INÍCIO</label>
@@ -2815,14 +2940,22 @@ function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
                 </div>
               </div>
             )}
+            <label className="mlabel">RECORRÊNCIA</label>
+            <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:4}}>
+              {RECURRENCES.map(r=>(
+                <button key={r.id}
+                  style={{padding:'5px 12px',borderRadius:20,border:`1px solid ${eRecur===r.id?'var(--acc)':'var(--b2)'}`,background:eRecur===r.id?'var(--acc-dim)':'transparent',color:eRecur===r.id?'var(--acc)':'var(--t3)',fontSize:11,cursor:'pointer',fontFamily:'var(--fm)',transition:'all .15s'}}
+                  onClick={()=>setERecur(r.id)}>{r.label}</button>
+              ))}
+            </div>
             <label className="mlabel">COR</label>
             <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:4}}>
               {CAL_COLORS.map(c=><button key={c} style={{width:26,height:26,borderRadius:5,background:c,border:`2px solid ${eColor===c?'var(--t1)':'transparent'}`,cursor:'pointer',transition:'all .12s'}} onClick={()=>setEColor(c)}/>)}
             </div>
             <label className="mlabel">NOTIFICAÇÕES</label>
             <div style={{display:'flex',gap:12,marginBottom:4,flexWrap:'wrap'}}>
-              {[{k:'1h',v:eN1h,s:setEN1h,l:'1 hora antes'},{k:'1d',v:eN1d,s:setEN1d,l:'1 dia antes'},{k:'1w',v:eN1w,s:setEN1w,l:'1 semana antes'}].map(n=>(
-                <label key={n.k} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}>
+              {[{v:eN1h,s:setEN1h,l:'1h antes'},{v:eN1d,s:setEN1d,l:'1 dia antes'},{v:eN1w,s:setEN1w,l:'1 semana antes'}].map((n,i)=>(
+                <label key={i} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}>
                   <input type="checkbox" checked={n.v} onChange={e=>n.s(e.target.checked)} style={{accentColor:'var(--acc)',width:15,height:15}}/>
                   <span style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--t2)',letterSpacing:'.06em'}}>{n.l}</span>
                 </label>
@@ -2832,7 +2965,7 @@ function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
             <textarea className="minput" placeholder="Notas sobre o evento..." value={eDesc} onChange={e=>setEDesc(e.target.value)} style={{minHeight:60,resize:'vertical'}}/>
             <div className="modal-btns">
               <button className="modal-save" onClick={save} disabled={saving}>{saving?'...':editId?'SALVAR':'CRIAR'}</button>
-              {editId && <button className="btn-del" style={{padding:'12px 14px'}} onClick={async()=>{await onDelete(editId);setShowModal(false);}}>EXCLUIR</button>}
+              {editId && <button className="btn-del" style={{padding:'12px 14px'}} onClick={async()=>{await onDelete(editId);setShowModal(false);setEditId(null);}}>EXCLUIR</button>}
               <button className="modal-close" onClick={()=>{setShowModal(false);setEditId(null);}}>CANCELAR</button>
             </div>
           </div>
