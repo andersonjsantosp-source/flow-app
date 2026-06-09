@@ -185,6 +185,7 @@ function FlowApp({ session }) {
 
   // ── UI state ────────────────────────────────────────
   const [page,     setPage]     = useState('home');
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [habTab,   setHabTab]   = useState('today');
   const [showAddHabit, setShowAddHabit] = useState(false);
   const [editHabitId,  setEditHabitId]  = useState(null);
@@ -612,6 +613,57 @@ function FlowApp({ session }) {
 
   return (
     <div className="app">
+      {/* ── MOBILE HAMBURGER ── */}
+      <button className="hamburger-btn" onClick={()=>setDrawerOpen(true)}>
+        <span/><span/><span/>
+      </button>
+
+      {/* ── MOBILE DRAWER ── */}
+      {drawerOpen && (
+        <div className="drawer-overlay" onClick={()=>setDrawerOpen(false)}>
+          <div className="drawer" onClick={e=>e.stopPropagation()}>
+            {/* Drawer brand */}
+            <div className="drawer-brand">
+              <img src="/logo192.png" alt="Mnemos" style={{width:32,height:32,borderRadius:8}}/>
+              <div style={{flex:1}}>
+                <div style={{fontSize:16,fontWeight:800,color:'var(--t1)',letterSpacing:'-.02em'}}>Mnemos</div>
+                <div style={{fontSize:10,color:'var(--t3)',fontFamily:'var(--fm)',letterSpacing:'.1em'}}>PRODUTIVIDADE</div>
+              </div>
+              <button className="drawer-close" onClick={()=>setDrawerOpen(false)}>✕</button>
+            </div>
+            {/* Drawer modules */}
+            <div className="drawer-section-label">MÓDULOS</div>
+            {[
+              {id:'home',     ico:'⌂', label:'Início',    badge:''},
+              {id:'habits',   ico:'◎', label:'Hábitos',   badge:`${doneH}/${habits.length}`},
+              {id:'kanban',   ico:'⊞', label:'Kanban',    badge:`${tasks.length}`},
+              {id:'journal',  ico:'✦', label:'Diário',    badge:`${entries.length}`},
+              {id:'routine',  ico:'◷', label:'Rotina',    badge:`${routines.length}`},
+              {id:'finance',  ico:'₢', label:'Finanças',  badge:`${fSheets.length}`},
+              {id:'calendar', ico:'◫', label:'Calendário',badge:`${calEvents.length}`},
+            ].map(({id,ico,label,badge})=>(
+              <button key={id} className={`drawer-item${page===id?' active':''}`}
+                onClick={()=>{setPage(id);setDrawerOpen(false);}}>
+                <span className="drawer-item-ico">{ico}</span>
+                <span className="drawer-item-label">{label}</span>
+                {badge && <span className="drawer-item-badge">{badge}</span>}
+              </button>
+            ))}
+            {/* Theme toggle */}
+            <div className="drawer-divider"/>
+            <button className="drawer-item" onClick={()=>{toggleTheme();setDrawerOpen(false);}}>
+              <span className="drawer-item-ico">{theme==='dark'?'☀':'☾'}</span>
+              <span className="drawer-item-label">{theme==='dark'?'Modo Claro':'Modo Escuro'}</span>
+            </button>
+            {/* Logout */}
+            <button className="drawer-item drawer-logout" onClick={()=>supabase.auth.signOut()}>
+              <span className="drawer-item-ico">→</span>
+              <span className="drawer-item-label">Sair</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── SIDEBAR ── */}
       <aside className="sidebar">
         <div className="sb-brand">
@@ -743,8 +795,8 @@ function FlowApp({ session }) {
         </div>
       </div>
 
-      {/* ── BOTTOM NAV ── */}
-      <nav className="bnav">
+      {/* ── BOTTOM NAV (desktop fallback hidden on mobile) ── */}
+      <nav className="bnav bnav-hidden-mobile">
         {[{ico:'⌂',label:'INÍCIO',id:'home'},{ico:'◎',label:'HÁBITOS',id:'habits'},{ico:'⊞',label:'KANBAN',id:'kanban'},{ico:'✦',label:'DIÁRIO',id:'journal'},{ico:'◷',label:'ROTINA',id:'routine'},{ico:'₢',label:'FINANÇAS',id:'finance'},{ico:'◫',label:'AGENDA',id:'calendar'}].map(({ico,label,id})=>(
           <button key={id} className={page===id?'active':''} onClick={()=>setPage(id)}>
             <span className="bnav-ico">{ico}</span><span>{label}</span><div className="bnav-pip"/>
