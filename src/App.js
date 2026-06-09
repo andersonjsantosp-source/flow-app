@@ -1067,6 +1067,113 @@ function HabManage({ habits, logs, editId, setEditId, onDelete, showAdd, setShow
 }
 
 // ─────────────────────────────────────────────────────
+// RICH TEXT EDITOR
+// ─────────────────────────────────────────────────────
+const RICH_COLORS = ['#DDE3E3','#5BA896','#4A7FAA','#7A6FAA','#C45A6A','#AA8F4A','#6FAA6F','#FF6B6B','#FFD93D','#C44DFF'];
+
+function RichEditor({ value, onChange, placeholder, className, style }) {
+  const ref = useRef(null);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+
+  // Sync content when value changes externally (e.g. loading entry)
+  const lastValue = useRef(value);
+  useEffect(() => {
+    if (ref.current && value !== lastValue.current && document.activeElement !== ref.current) {
+      ref.current.innerHTML = value || '';
+      lastValue.current = value;
+    }
+  }, [value]);
+
+  const exec = (cmd, val) => {
+    ref.current?.focus();
+    document.execCommand(cmd, false, val);
+    ref.current?.focus();
+  };
+
+  const onInput = () => {
+    const html = ref.current?.innerHTML || '';
+    lastValue.current = html;
+    onChange(html);
+  };
+
+  const isActive = cmd => { try { return document.queryCommandState(cmd); } catch { return false; } };
+
+  const tools = [
+    { ico: 'B',  cmd: 'bold',      style: {fontWeight:'bold'} },
+    { ico: 'I',  cmd: 'italic',    style: {fontStyle:'italic'} },
+    { ico: 'U',  cmd: 'underline', style: {textDecoration:'underline'} },
+    { ico: 'S',  cmd: 'strikeThrough', style: {textDecoration:'line-through'} },
+  ];
+
+  const sizes = [
+    {l:'P', v:'3'}, {l:'M', v:'4'}, {l:'G', v:'5'}, {l:'GG', v:'6'}
+  ];
+
+  return (
+    <div className="rich-wrap" style={style}>
+      <div className="rich-toolbar" onMouseDown={e=>e.preventDefault()}>
+        {/* Format buttons */}
+        {tools.map(t => (
+          <button key={t.cmd} className="rich-btn" style={t.style}
+            title={t.cmd} onClick={()=>exec(t.cmd)}>
+            {t.ico}
+          </button>
+        ))}
+        <div className="rich-sep"/>
+        {/* Font size */}
+        {sizes.map(s => (
+          <button key={s.v} className="rich-btn rich-size" onClick={()=>exec('fontSize', s.v)}
+            style={{fontSize: s.v==='3'?10:s.v==='4'?12:s.v==='5'?14:16}}>
+            {s.l}
+          </button>
+        ))}
+        <div className="rich-sep"/>
+        {/* Lists */}
+        <button className="rich-btn" title="Lista" onClick={()=>exec('insertUnorderedList')}>≡</button>
+        <button className="rich-btn" title="Lista numerada" onClick={()=>exec('insertOrderedList')}>1.</button>
+        <div className="rich-sep"/>
+        {/* Color */}
+        <div style={{position:'relative'}}>
+          <button className="rich-btn rich-color-btn" title="Cor do texto"
+            onClick={()=>setShowColorPicker(p=>!p)}>
+            <span style={{fontSize:12}}>A</span>
+            <span className="rich-color-preview" style={{background:'currentColor'}}/>
+          </button>
+          {showColorPicker && (
+            <div className="rich-color-picker" onMouseDown={e=>e.preventDefault()}>
+              {RICH_COLORS.map(c => (
+                <button key={c} className="rich-color-dot"
+                  style={{background:c}}
+                  onClick={()=>{exec('foreColor',c);setShowColorPicker(false);}}>
+                </button>
+              ))}
+              <button className="rich-color-dot" style={{background:'transparent',border:'1px solid var(--b3)',fontSize:10,color:'var(--t3)'}}
+                onClick={()=>{exec('removeFormat');setShowColorPicker(false);}}>✕</button>
+            </div>
+          )}
+        </div>
+        {/* Highlight */}
+        <button className="rich-btn" title="Destaque" onClick={()=>exec('hiliteColor','rgba(255,220,0,0.35)')}>
+          <span style={{background:'rgba(255,220,0,0.35)',padding:'0 3px',borderRadius:2,fontSize:11}}>H</span>
+        </button>
+        <div className="rich-sep"/>
+        {/* Clear */}
+        <button className="rich-btn" title="Limpar formatação" onClick={()=>exec('removeFormat')}>✕</button>
+      </div>
+      <div
+        ref={ref}
+        className={`rich-content${className?' '+className:''}`}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={onInput}
+        data-placeholder={placeholder}
+        dangerouslySetInnerHTML={undefined}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────
 // KANBAN PAGE
 // ─────────────────────────────────────────────────────
 function KanbanPage({ tasks, kbCols, kbTags, onNewTask, onEditTask, onDeleteTask, onMoveTask, dragId, onOpenSettings }) {
@@ -1149,7 +1256,7 @@ function TaskCard({ task, kbCols, kbTags, onEdit, onDelete, onMove, dragId }) {
           {task.tags.map(tid=>{const t=kbTags.find(x=>x.id===tid);return t?<div key={tid} className="tc-tag" style={{background:t.color+'18',color:t.color}}>{t.label}</div>:null;})}
         </div>
       )}
-      {task.description && <div className="tc-desc">{task.description}</div>}
+      {task.description && <div className="tc-desc" dangerouslySetInnerHTML={{__html: task.description.replace(/<[^>]*>/g,'').slice(0,120)}}/>}
       {task.reminder && (
         <div className={`tc-reminder${reminderPast(task.reminder)?' past':''}`}>
           {reminderPast(task.reminder)?'⏰':'🔔'} {new Date(task.reminder).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'})}
@@ -1178,7 +1285,12 @@ function TaskModal({ editId, kbCols, kbTags, tTitle, setTTitle, tDesc, setTDesc,
         <label className="mlabel">TÍTULO</label>
         <input className="minput" placeholder="Descreva a tarefa..." value={tTitle} onChange={e=>setTTitle(e.target.value)} onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&onSave()} autoFocus/>
         <label className="mlabel">DESCRIÇÃO</label>
-        <textarea className="minput" placeholder="Detalhes opcionais..." value={tDesc} onChange={e=>setTDesc(e.target.value)} style={{minHeight:140,resize:'vertical'}}/>
+        <RichEditor
+          value={tDesc}
+          onChange={setTDesc}
+          placeholder="Detalhes opcionais..."
+          style={{marginBottom:4}}
+        />
         {kbTags.length>0 && <>
           <label className="mlabel">ETIQUETAS</label>
           <div className="tag-grid">
@@ -1486,7 +1598,7 @@ function JournalPage({ entries, folders, onSave, onDelete, onAddFolder, onUpdate
                     <div className="journal-entry-item-body">
                       <div className="journal-entry-text">
                         <div className="journal-entry-title">{e.title || 'Sem título'}</div>
-                        <div className="journal-entry-preview">{e.body?.slice(0,80) || '—'}</div>
+                        <div className="journal-entry-preview">{(e.body||'').replace(/<[^>]*>/g,'').slice(0,80) || '—'}</div>
                       </div>
                       {e.image_url && (
                         <div className="journal-entry-thumb-wrap">
@@ -1546,14 +1658,11 @@ function JournalPage({ entries, folders, onSave, onDelete, onAddFolder, onUpdate
             onChange={e=>{setETitle(e.target.value);setDirty(true);}}
           />
           {/* Body */}
-          <textarea
-            ref={textRef}
-            className="journal-body-input"
-            placeholder="O que está na sua mente hoje?
-
-Escreva livremente. Este é o seu espaço..."
+          <RichEditor
             value={eBody}
-            onChange={e=>{setEBody(e.target.value);setDirty(true);}}
+            onChange={v=>{setEBody(v);setDirty(true);}}
+            placeholder="O que está na sua mente hoje?&#10;&#10;Escreva livremente. Este é o seu espaço..."
+            className="journal-body-rich"
           />
           {/* Image */}
           <div className="journal-image-section">
@@ -1614,7 +1723,7 @@ Escreva livremente. Este é o seu espaço..."
           )}
           {/* Word count */}
           <div className="journal-wordcount">
-            {eBody.trim() ? `${eBody.trim().split(/\s+/).length} palavras · ${eBody.length} caracteres` : ''}
+            {eBody.trim() ? (() => { const text = eBody.replace(/<[^>]*>/g,'').trim(); return text ? `${text.split(/\s+/).length} palavras · ${text.length} caracteres` : ''; })() : ''}
           </div>
         </div>
       ) : (
