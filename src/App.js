@@ -1126,91 +1126,82 @@ const RICH_COLORS = ['#DDE3E3','#5BA896','#4A7FAA','#7A6FAA','#C45A6A','#AA8F4A'
 function RichEditor({ value, onChange, placeholder, className, style }) {
   const ref = useRef(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const initialized = useRef(false);
 
-  // Sync content when value changes externally (e.g. loading entry)
-  const lastValue = useRef(value);
+  // Initialize content on mount and when value changes externally
   useEffect(() => {
-    if (ref.current && value !== lastValue.current && document.activeElement !== ref.current) {
+    if (!ref.current) return;
+    // Always set on first render or when value changes from outside
+    if (!initialized.current || (value !== ref.current.innerHTML && document.activeElement !== ref.current)) {
       ref.current.innerHTML = value || '';
-      lastValue.current = value;
+      initialized.current = true;
     }
   }, [value]);
 
   const exec = (cmd, val) => {
     ref.current?.focus();
-    document.execCommand(cmd, false, val);
-    ref.current?.focus();
+    document.execCommand(cmd, false, val || null);
   };
 
   const onInput = () => {
     const html = ref.current?.innerHTML || '';
-    lastValue.current = html;
     onChange(html);
   };
 
-  const isActive = cmd => { try { return document.queryCommandState(cmd); } catch { return false; } };
-
   const tools = [
-    { ico: 'B',  cmd: 'bold',      style: {fontWeight:'bold'} },
-    { ico: 'I',  cmd: 'italic',    style: {fontStyle:'italic'} },
-    { ico: 'U',  cmd: 'underline', style: {textDecoration:'underline'} },
-    { ico: 'S',  cmd: 'strikeThrough', style: {textDecoration:'line-through'} },
+    { ico: 'B', cmd: 'bold',          style: {fontWeight:'bold'} },
+    { ico: 'I', cmd: 'italic',        style: {fontStyle:'italic'} },
+    { ico: 'U', cmd: 'underline',     style: {textDecoration:'underline'} },
+    { ico: 'S', cmd: 'strikeThrough', style: {textDecoration:'line-through'} },
   ];
 
-  const sizes = [
-    {l:'P', v:'3'}, {l:'M', v:'4'}, {l:'G', v:'5'}, {l:'GG', v:'6'}
-  ];
+  const sizes = [{l:'P',v:'3'},{l:'M',v:'4'},{l:'G',v:'5'},{l:'GG',v:'6'}];
 
   return (
     <div className="rich-wrap" style={style}>
       <div className="rich-toolbar" onMouseDown={e=>e.preventDefault()}>
-        {/* Format buttons */}
         {tools.map(t => (
           <button key={t.cmd} className="rich-btn" style={t.style}
-            title={t.cmd} onClick={()=>exec(t.cmd)}>
+            title={t.cmd} onMouseDown={e=>{e.preventDefault();exec(t.cmd);}}>
             {t.ico}
           </button>
         ))}
         <div className="rich-sep"/>
-        {/* Font size */}
         {sizes.map(s => (
-          <button key={s.v} className="rich-btn rich-size" onClick={()=>exec('fontSize', s.v)}
-            style={{fontSize: s.v==='3'?10:s.v==='4'?12:s.v==='5'?14:16}}>
+          <button key={s.v} className="rich-btn rich-size"
+            style={{fontSize: s.v==='3'?10:s.v==='4'?12:s.v==='5'?14:16}}
+            onMouseDown={e=>{e.preventDefault();exec('fontSize',s.v);}}>
             {s.l}
           </button>
         ))}
         <div className="rich-sep"/>
-        {/* Lists */}
-        <button className="rich-btn" title="Lista" onClick={()=>exec('insertUnorderedList')}>≡</button>
-        <button className="rich-btn" title="Lista numerada" onClick={()=>exec('insertOrderedList')}>1.</button>
+        <button className="rich-btn" title="Lista" onMouseDown={e=>{e.preventDefault();exec('insertUnorderedList');}}>≡</button>
+        <button className="rich-btn" title="Lista numerada" onMouseDown={e=>{e.preventDefault();exec('insertOrderedList');}}>1.</button>
         <div className="rich-sep"/>
-        {/* Color */}
         <div style={{position:'relative'}}>
           <button className="rich-btn rich-color-btn" title="Cor do texto"
-            onClick={()=>setShowColorPicker(p=>!p)}>
+            onMouseDown={e=>{e.preventDefault();setShowColorPicker(p=>!p);}}>
             <span style={{fontSize:12}}>A</span>
-            <span className="rich-color-preview" style={{background:'currentColor'}}/>
+            <span className="rich-color-preview"/>
           </button>
           {showColorPicker && (
             <div className="rich-color-picker" onMouseDown={e=>e.preventDefault()}>
               {RICH_COLORS.map(c => (
-                <button key={c} className="rich-color-dot"
-                  style={{background:c}}
-                  onClick={()=>{exec('foreColor',c);setShowColorPicker(false);}}>
-                </button>
+                <button key={c} className="rich-color-dot" style={{background:c}}
+                  onMouseDown={e=>{e.preventDefault();exec('foreColor',c);setShowColorPicker(false);}}/>
               ))}
               <button className="rich-color-dot" style={{background:'transparent',border:'1px solid var(--b3)',fontSize:10,color:'var(--t3)'}}
-                onClick={()=>{exec('removeFormat');setShowColorPicker(false);}}>✕</button>
+                onMouseDown={e=>{e.preventDefault();exec('removeFormat');setShowColorPicker(false);}}>✕</button>
             </div>
           )}
         </div>
-        {/* Highlight */}
-        <button className="rich-btn" title="Destaque" onClick={()=>exec('hiliteColor','rgba(255,220,0,0.35)')}>
+        <button className="rich-btn" title="Destaque"
+          onMouseDown={e=>{e.preventDefault();exec('hiliteColor','rgba(255,220,0,0.35)');}}>
           <span style={{background:'rgba(255,220,0,0.35)',padding:'0 3px',borderRadius:2,fontSize:11}}>H</span>
         </button>
         <div className="rich-sep"/>
-        {/* Clear */}
-        <button className="rich-btn" title="Limpar formatação" onClick={()=>exec('removeFormat')}>✕</button>
+        <button className="rich-btn" title="Limpar formatação"
+          onMouseDown={e=>{e.preventDefault();exec('removeFormat');}}>✕</button>
       </div>
       <div
         ref={ref}
@@ -1219,7 +1210,6 @@ function RichEditor({ value, onChange, placeholder, className, style }) {
         suppressContentEditableWarning
         onInput={onInput}
         data-placeholder={placeholder}
-        dangerouslySetInnerHTML={undefined}
       />
     </div>
   );
