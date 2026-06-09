@@ -2854,7 +2854,6 @@ function CalendarPage({ events, onAdd, onUpdate, onDelete }) {
                           }}
                           onClick={e=>{e.stopPropagation();openEdit(ev);}}>
                           {isStart && <span style={{fontWeight:600,fontSize:10,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',display:'block'}}>
-                            {!ev.all_day && <span style={{opacity:.75,marginRight:3}}>{fmtTime(ev.start_at)}</span>}
                             {ev.title}
                           </span>}
                         </div>
