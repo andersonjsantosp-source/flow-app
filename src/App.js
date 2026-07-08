@@ -283,6 +283,21 @@ function FlowApp({ session }) {
       setFEntries(feRes.data || []);
       setCalEvents(ceRes.data || []);
 
+      // ── Auto-clear done columns ──
+      const allCols = cols;
+      const allTasks = tkRes.data || [];
+      const doneCols = allCols.filter(c => c.type === 'done' && c.auto_clear && c.auto_clear !== 'never');
+      for (const col of doneCols) {
+        const cutoffHours = col.auto_clear === '1day' ? 24 : 7*24;
+        const cutoff = new Date(Date.now() - cutoffHours*60*60*1000);
+        const toDelete = allTasks.filter(t =>
+          t.col_id === col.id && new Date(t.created_at) < cutoff
+        );
+        for (const t of toDelete) {
+          await supabase.from('tasks').delete().eq('id', t.id);
+        }
+      }
+
       if (cols.length > 0) setTCol(cols[0].id);
       setDataReady(true);
     }
@@ -1301,6 +1316,12 @@ function KbCol({ col, tasks, kbCols, kbTags, onNewTask, onEditTask, onDeleteTask
       <div className="kb-col-head">
         <div className="kb-col-title">{col.label}</div>
         <div className="kb-col-count">{tasks.length}</div>
+        {col.type==='done' && tasks.length>0 && (
+          <button className="kb-clear-btn" title="Limpar todas as tarefas concluídas"
+            onClick={()=>{if(window.confirm(`Apagar todas as ${tasks.length} tarefas de "${col.label}"?`))tasks.forEach(t=>onDeleteTask(t.id));}}>
+            🗑
+          </button>
+        )}
       </div>
       <div ref={cardsRef} className={`kb-cards${over?' drag-over':''}`}
         onDragOver={e=>{e.preventDefault();setOver(true);setDropIdx(getDropIndex(e));}}
@@ -1475,6 +1496,24 @@ function SettingsModal({ kbCols, kbTags, onAddCol, onDeleteCol, onUpdateCol, onR
                     <button key={s.id}
                       className={`col-sort-btn${(col.sort_mode||'free')===s.id?' active':''}`}
                       onClick={()=>onUpdateCol(col.id,{sort_mode:s.id})}>
+                      {s.l}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {/* Done column — clear options */}
+              {col.type==='done' && (
+                <div className="col-sort-row">
+                  <span className="col-sort-label">🗑 Limpar auto:</span>
+                  {[
+                    {id:'never', l:'Nunca'},
+                    {id:'1day',  l:'Após 1 dia'},
+                    {id:'1week', l:'Após 1 semana'},
+                  ].map(s=>(
+                    <button key={s.id}
+                      className={`col-sort-btn${(col.auto_clear||'never')===s.id?' active':''}`}
+                      style={(col.auto_clear||'never')===s.id&&s.id!=='never'?{borderColor:'var(--red)',color:'var(--red)',background:'var(--red-dim)'}:{}}
+                      onClick={()=>onUpdateCol(col.id,{auto_clear:s.id})}>
                       {s.l}
                     </button>
                   ))}
