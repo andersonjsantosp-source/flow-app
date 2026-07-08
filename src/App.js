@@ -2673,12 +2673,10 @@ function HomePage({ habits, logs, tasks, kbCols, entries, routines, rBlocks, rLo
   const nextEvent   = calInstances.sort((a,b)=>new Date(a.start_at)-new Date(b.start_at))[0];
 
   // ── Kanban stats ──
-  const totalTasks = tasks.length;
-  const doneTasks  = tasks.filter(t => {
-    const col = kbCols.find(c => c.id === t.col_id);
-    return col?.label?.toLowerCase().includes('conclu') || col?.label?.toLowerCase().includes('done');
-  }).length;
-  const urgentTasks = tasks.filter(t => t.reminder && new Date(t.reminder) > new Date() && new Date(t.reminder) - new Date() < 24*60*60*1000).length;
+  const totalTasks    = tasks.length;
+  const inboxTasks    = tasks.filter(t => kbCols.find(c => c.id === t.col_id && c.type === 'inbox')).length;
+  const transitTasks  = tasks.filter(t => kbCols.find(c => c.id === t.col_id && c.type === 'transition')).length;
+  const doneTasks     = tasks.filter(t => t.completed || kbCols.find(c => c.id === t.col_id && c.type === 'done')).length;
 
   // ── Journal stats ──
   const thisMonthEntries = entries.filter(e => e.entry_date?.startsWith(td.slice(0,7))).length;
@@ -2783,9 +2781,18 @@ function HomePage({ habits, logs, tasks, kbCols, entries, routines, rBlocks, rLo
             <div className="home-card-arrow">→</div>
           </div>
           <div className="home-card-stats" style={{marginTop:12}}>
-            <div className="home-stat"><span className="home-stat-v">{totalTasks}</span><span className="home-stat-l">tarefas</span></div>
-            <div className="home-stat"><span className="home-stat-v">{doneTasks}</span><span className="home-stat-l">concluídas</span></div>
-            {urgentTasks > 0 && <div className="home-stat urgent"><span className="home-stat-v">{urgentTasks}</span><span className="home-stat-l">urgentes</span></div>}
+            <div className="home-stat">
+              <span className="home-stat-v" style={{color:'#4A7FAA'}}>{inboxTasks}</span>
+              <span className="home-stat-l">📥 novas</span>
+            </div>
+            <div className="home-stat">
+              <span className="home-stat-v" style={{color:'#AA8F4A'}}>{transitTasks}</span>
+              <span className="home-stat-l">🔄 andamento</span>
+            </div>
+            <div className="home-stat">
+              <span className="home-stat-v" style={{color:'var(--acc)'}}>{doneTasks}</span>
+              <span className="home-stat-l">✅ concluídas</span>
+            </div>
           </div>
           {/* Mini column bars */}
           <div className="home-kb-cols">
