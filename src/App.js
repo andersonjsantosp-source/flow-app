@@ -365,24 +365,63 @@ function FlowApp({ session }) {
   const saveTask = useCallback(async () => {
     if (!tTitle.trim()) return;
     setSaving(true);
-    const payload = { title: tTitle, description: tDesc, col_id: tCol, tags: tTags, reminder: tReminder ? new Date(tReminder).toISOString() : null };
+    const reminderIso = tReminder ? new Date(tReminder).toISOString() : null;
+    const payload = { title: tTitle, description: tDesc, col_id: tCol, tags: tTags, reminder: reminderIso };
+
     if (editTaskId) {
       const { data } = await supabase.from('tasks').update(payload).eq('id', editTaskId).select().single();
-      if (data) setTasks(prev => prev.map(t => t.id === editTaskId ? data : t));
+      if (data) {
+        setTasks(prev => prev.map(t => t.id === editTaskId ? data : t));
+        // Sync calendar: find existing linked event and update or delete
+        const existingEv = calEvents.find(e => e.kb_task_id === editTaskId);
+        if (reminderIso) {
+          const evPayload = {
+            title: `📋 ${tTitle}`, description: tDesc||'',
+            start_at: reminderIso, end_at: reminderIso,
+            color: '#4A7FAA', all_day: false,
+            notify_1h: true, notify_1d: true, notify_1w: false,
+            recurrence: 'none', kb_task_id: editTaskId,
+          };
+          if (existingEv) {
+            await updateCalEvent(existingEv.id, evPayload);
+          } else {
+            await addCalEvent({ ...evPayload, user_id: uid });
+          }
+        } else if (existingEv) {
+          // Reminder removed — delete the calendar event
+          await deleteCalEvent(existingEv.id);
+        }
+      }
     } else {
       const pos = tasks.filter(t => t.col_id === tCol).length;
       const { data } = await supabase.from('tasks').insert({ ...payload, user_id: uid, position: pos }).select().single();
-      if (data) setTasks(prev => [...prev, data]);
+      if (data) {
+        setTasks(prev => [...prev, data]);
+        // Create calendar event if has reminder
+        if (reminderIso) {
+          await addCalEvent({
+            title: `📋 ${tTitle}`, description: tDesc||'',
+            start_at: reminderIso, end_at: reminderIso,
+            color: '#4A7FAA', all_day: false,
+            notify_1h: true, notify_1d: true, notify_1w: false,
+            recurrence: 'none', kb_task_id: data.id,
+            user_id: uid,
+          });
+        }
+      }
     }
     if (tReminder) scheduleNotif(tTitle, tReminder);
     setShowTaskModal(false); setEditTaskId(null);
     setSaving(false);
-  }, [tTitle, tDesc, tCol, tTags, tReminder, editTaskId, tasks, uid]);
+  }, [tTitle, tDesc, tCol, tTags, tReminder, editTaskId, tasks, calEvents, uid, addCalEvent, updateCalEvent, deleteCalEvent]);
 
   const deleteTask = useCallback(async id => {
     setTasks(prev => prev.filter(t => t.id !== id));
     await supabase.from('tasks').delete().eq('id', id);
-  }, []);
+    // Delete linked calendar event if exists
+    const linkedEv = calEvents.find(e => e.kb_task_id === id);
+    if (linkedEv) await deleteCalEvent(linkedEv.id);
+  }, [calEvents, deleteCalEvent]);
 
   const toggleComplete = useCallback(async (id) => {
     setTasks(prev => prev.map(t => t.id === id ? {...t, completed: !t.completed} : t));
