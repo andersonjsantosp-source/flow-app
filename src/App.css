@@ -1918,3 +1918,22 @@ textarea.minput{resize:vertical;min-height:72px;line-height:1.5;}
   transition: all .15s; margin-left: 4px;
 }
 .kb-clear-btn:hover { background: var(--red-dim); border-color: var(--red); color: var(--red); }
+
+/* ── TASK CHECK BUTTON ── */
+.tc-check-btn {
+  position: absolute; top: 10px; right: 10px;
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid var(--b3); background: rgba(255,255,255,0.04);
+  color: var(--acc); font-size: 12px; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: all .15s cubic-bezier(.34,1.56,.64,1);
+  flex-shrink: 0; z-index: 2;
+}
+.tc:hover .tc-check-btn { opacity: 1; }
+.tc-check-btn:hover { border-color: var(--acc); background: var(--acc-dim); transform: scale(1.1); }
+.tc-completed .tc-check-btn { opacity: 1; background: var(--acc); border-color: var(--acc); color: #000; }
+
+/* Completed task styling */
+.tc-completed { opacity: .65; }
+.tc-completed:hover { opacity: .85; }
+.tc-title-done { text-decoration: line-through; color: var(--t3) !important; }
