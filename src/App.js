@@ -362,6 +362,24 @@ function FlowApp({ session }) {
     setShowTaskModal(true);
   };
 
+  // ── CALENDAR ACTIONS ─────────────────────────────────
+  const addCalEvent = useCallback(async (ev) => {
+    const { data } = await supabase.from('calendar_events')
+      .insert({ user_id: uid, ...ev }).select().single();
+    if (data) setCalEvents(prev => [...prev, data]);
+    return data;
+  }, [uid]);
+
+  const updateCalEvent = useCallback(async (id, patch) => {
+    setCalEvents(prev => prev.map(e => e.id === id ? {...e, ...patch} : e));
+    await supabase.from('calendar_events').update(patch).eq('id', id);
+  }, []);
+
+  const deleteCalEvent = useCallback(async id => {
+    setCalEvents(prev => prev.filter(e => e.id !== id));
+    await supabase.from('calendar_events').delete().eq('id', id);
+  }, []);
+
   const saveTask = useCallback(async () => {
     if (!tTitle.trim()) return;
     setSaving(true);
@@ -615,24 +633,6 @@ function FlowApp({ session }) {
     setFSheets(prev => prev.filter(s => s.id !== id));
     setFEntries(prev => prev.filter(e => e.sheet_id !== id));
     await supabase.from('finance_sheets').delete().eq('id', id);
-  }, []);
-
-  // ── CALENDAR ACTIONS ─────────────────────────────────
-  const addCalEvent = useCallback(async (ev) => {
-    const { data } = await supabase.from('calendar_events')
-      .insert({ user_id: uid, ...ev }).select().single();
-    if (data) setCalEvents(prev => [...prev, data]);
-    return data;
-  }, [uid]);
-
-  const updateCalEvent = useCallback(async (id, patch) => {
-    setCalEvents(prev => prev.map(e => e.id === id ? {...e, ...patch} : e));
-    await supabase.from('calendar_events').update(patch).eq('id', id);
-  }, []);
-
-  const deleteCalEvent = useCallback(async id => {
-    setCalEvents(prev => prev.filter(e => e.id !== id));
-    await supabase.from('calendar_events').delete().eq('id', id);
   }, []);
 
   // ── JOURNAL FOLDER ACTIONS ───────────────────────────
