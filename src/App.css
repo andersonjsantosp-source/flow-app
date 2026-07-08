@@ -1891,3 +1891,20 @@ textarea.minput{resize:vertical;min-height:72px;line-height:1.5;}
 .home-inbox-btn:disabled { opacity: .4; cursor: default; }
 .home-inbox-btn:not(:disabled):hover { opacity: .85; }
 :root[data-theme="light"] .home-inbox-input { background: rgba(255,255,255,0.6); border-color: rgba(0,0,0,0.12); }
+
+/* ── COLUMN SORT MODE ── */
+.col-sort-row {
+  display: flex; align-items: center; gap: 5px;
+  margin: 5px 0 0 44px; flex-wrap: wrap;
+}
+.col-sort-label {
+  font-family: var(--fm); font-size: 9px; color: var(--t3);
+  letter-spacing: .1em; text-transform: uppercase; flex-shrink: 0;
+}
+.col-sort-btn {
+  padding: 2px 9px; border-radius: 20px; font-size: 10px; font-weight: 600;
+  border: 1px solid var(--b2); background: transparent; color: var(--t3);
+  cursor: pointer; transition: all .15s; font-family: var(--fm);
+}
+.col-sort-btn:hover { border-color: var(--blue); color: var(--blue); }
+.col-sort-btn.active { background: rgba(74,127,170,0.15); border-color: var(--blue); color: var(--blue); }
