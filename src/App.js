@@ -1232,6 +1232,31 @@ function RichEditor({ value, onChange, placeholder, className, style }) {
 // ─────────────────────────────────────────────────────
 // KANBAN PAGE
 // ─────────────────────────────────────────────────────
+function sortColTasks(tasks, col, kbTags) {
+  const mode = col.sort_mode || 'free';
+  if (mode === 'free') return tasks.sort((a,b) => a.position - b.position);
+
+  const urgentTag = kbTags.find(t => t.label.toLowerCase().includes('urgente'));
+
+  return [...tasks].sort((a, b) => {
+    if (mode === 'created') {
+      return new Date(a.created_at) - new Date(b.created_at);
+    }
+    if (mode === 'priority') {
+      const aUrgent = urgentTag && (a.tags||[]).includes(urgentTag.id) ? 0 : 1;
+      const bUrgent = urgentTag && (b.tags||[]).includes(urgentTag.id) ? 0 : 1;
+      if (aUrgent !== bUrgent) return aUrgent - bUrgent;
+      return new Date(a.created_at) - new Date(b.created_at);
+    }
+    if (mode === 'deadline') {
+      const aD = a.reminder ? new Date(a.reminder) : new Date('9999');
+      const bD = b.reminder ? new Date(b.reminder) : new Date('9999');
+      return aD - bD;
+    }
+    return a.position - b.position;
+  });
+}
+
 function KanbanPage({ tasks, kbCols, kbTags, onNewTask, onEditTask, onDeleteTask, onMoveTask, dragId, onOpenSettings }) {
   const tot=tasks.length;
   return (
@@ -1246,7 +1271,7 @@ function KanbanPage({ tasks, kbCols, kbTags, onNewTask, onEditTask, onDeleteTask
       <div className="kb-board-scroll">
         <div className="kb-board" style={{gridTemplateColumns:`repeat(${kbCols.length},280px)`}}>
           {kbCols.map(col=>(
-            <KbCol key={col.id} col={col} tasks={tasks.filter(t=>t.col_id===col.id)} kbCols={kbCols} kbTags={kbTags}
+            <KbCol key={col.id} col={col} tasks={sortColTasks(tasks.filter(t=>t.col_id===col.id), col, kbTags)} kbCols={kbCols} kbTags={kbTags}
               onNewTask={onNewTask} onEditTask={onEditTask} onDeleteTask={onDeleteTask} onMoveTask={onMoveTask} dragId={dragId}/>
           ))}
         </div>
@@ -1437,6 +1462,24 @@ function SettingsModal({ kbCols, kbTags, onAddCol, onDeleteCol, onUpdateCol, onR
                   </button>
                 ))}
               </div>
+              {/* Sort mode — only for transition columns */}
+              {(col.type||'transition')==='transition' && (
+                <div className="col-sort-row">
+                  <span className="col-sort-label">⚡ Automação:</span>
+                  {[
+                    {id:'free',      l:'Livre'},
+                    {id:'created',   l:'Criação'},
+                    {id:'priority',  l:'Urgente primeiro'},
+                    {id:'deadline',  l:'Prazo'},
+                  ].map(s=>(
+                    <button key={s.id}
+                      className={`col-sort-btn${(col.sort_mode||'free')===s.id?' active':''}`}
+                      onClick={()=>onUpdateCol(col.id,{sort_mode:s.id})}>
+                      {s.l}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
           <div style={{display:'flex',gap:8,marginTop:4,alignItems:'center'}}>
