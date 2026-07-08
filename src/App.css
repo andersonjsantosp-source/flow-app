@@ -1908,3 +1908,13 @@ textarea.minput{resize:vertical;min-height:72px;line-height:1.5;}
 }
 .col-sort-btn:hover { border-color: var(--blue); color: var(--blue); }
 .col-sort-btn.active { background: rgba(74,127,170,0.15); border-color: var(--blue); color: var(--blue); }
+
+/* ── DONE COLUMN CLEAR BUTTON ── */
+.kb-clear-btn {
+  width: 24px; height: 24px; border-radius: 5px;
+  background: transparent; border: 1px solid transparent;
+  color: var(--t3); font-size: 13px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s; margin-left: 4px;
+}
+.kb-clear-btn:hover { background: var(--red-dim); border-color: var(--red); color: var(--red); }
