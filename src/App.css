@@ -1851,3 +1851,43 @@ textarea.minput{resize:vertical;min-height:72px;line-height:1.5;}
   /* Remove bottom padding that was for bnav */
   .mod-body { padding-bottom: 24px !important; }
 }
+
+/* ── COLUMN TYPE SELECTOR ── */
+.set-item-wrap { margin-bottom: 8px; }
+.col-type-row { display: flex; gap: 5px; margin: 4px 0 0 44px; flex-wrap: wrap; }
+.col-type-btn {
+  padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 600;
+  border: 1px solid var(--b2); background: transparent; color: var(--t3);
+  cursor: pointer; transition: all .15s; font-family: var(--fm); letter-spacing: .04em;
+}
+.col-type-btn:hover { border-color: var(--acc); color: var(--t2); }
+.col-type-btn.active { background: var(--acc-dim); border-color: var(--acc); color: var(--acc); }
+
+/* ── HOME INBOX QUICK ADD ── */
+.home-inbox-wrap {
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--b1);
+}
+.home-inbox-label {
+  font-family: var(--fm); font-size: 9px; color: var(--t3);
+  letter-spacing: .12em; text-transform: uppercase; margin-bottom: 6px;
+}
+.home-inbox-row { display: flex; gap: 6px; }
+.home-inbox-input {
+  flex: 1; background: var(--b1); border: 1px solid var(--b2);
+  border-radius: var(--r); padding: 7px 10px; color: var(--t1);
+  font-size: 12px; font-family: var(--f); outline: none;
+  transition: border-color .15s;
+}
+.home-inbox-input:focus { border-color: var(--acc); background: var(--bg3); }
+.home-inbox-input::placeholder { color: var(--t3); }
+.home-inbox-btn {
+  width: 30px; height: 30px; border-radius: var(--r);
+  background: var(--acc); border: none; color: #000;
+  font-size: 14px; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: opacity .15s; flex-shrink: 0;
+}
+.home-inbox-btn:disabled { opacity: .4; cursor: default; }
+.home-inbox-btn:not(:disabled):hover { opacity: .85; }
+:root[data-theme="light"] .home-inbox-input { background: rgba(255,255,255,0.6); border-color: rgba(0,0,0,0.12); }
