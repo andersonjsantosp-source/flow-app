@@ -384,6 +384,12 @@ function FlowApp({ session }) {
     await supabase.from('tasks').delete().eq('id', id);
   }, []);
 
+  const toggleComplete = useCallback(async (id) => {
+    setTasks(prev => prev.map(t => t.id === id ? {...t, completed: !t.completed} : t));
+    const task = tasks.find(t => t.id === id);
+    if (task) await supabase.from('tasks').update({ completed: !task.completed }).eq('id', id);
+  }, [tasks]);
+
   const quickAddTask = useCallback(async (colId, title) => {
     if (!title.trim() || !colId) return;
     const pos = tasks.filter(t => t.col_id === colId).length;
@@ -394,22 +400,22 @@ function FlowApp({ session }) {
   }, [tasks, uid]);
 
   const moveTask = useCallback(async (id, colId, dropPos) => {
+    const targetCol = kbCols.find(c => c.id === colId);
+    const autoComplete = targetCol?.type === 'done';
     setTasks(prev => {
       const task = prev.find(t => t.id === id);
       if (!task) return prev;
-      // Remove from current position
       let others = prev.filter(t => t.id !== id);
-      // Get tasks in target column (after removal)
       const colTasks = others.filter(t => t.col_id === colId);
-      // Insert at drop position
       const insertAt = dropPos !== undefined ? Math.min(dropPos, colTasks.length) : colTasks.length;
-      // Rebuild positions
-      const newColTasks = [...colTasks.slice(0, insertAt), {...task, col_id: colId}, ...colTasks.slice(insertAt)];
+      const newColTasks = [...colTasks.slice(0, insertAt), {...task, col_id: colId, completed: autoComplete || task.completed}, ...colTasks.slice(insertAt)];
       const otherTasks  = others.filter(t => t.col_id !== colId);
       return [...otherTasks, ...newColTasks];
     });
-    await supabase.from('tasks').update({ col_id: colId }).eq('id', id);
-  }, []);
+    const patch = { col_id: colId };
+    if (autoComplete) patch.completed = true;
+    await supabase.from('tasks').update(patch).eq('id', id);
+  }, [kbCols]);
 
   // ── COLUMN ACTIONS ───────────────────────────────────
   const addCol = useCallback(async () => {
@@ -790,7 +796,7 @@ function FlowApp({ session }) {
           {page==='kanban' && (
             <KanbanPage tasks={tasks} kbCols={kbCols} kbTags={kbTags}
               onNewTask={openNewTask} onEditTask={openEditTask} onDeleteTask={deleteTask}
-              onMoveTask={moveTask} dragId={dragId}
+              onMoveTask={moveTask} onToggleComplete={toggleComplete} dragId={dragId}
               onOpenSettings={()=>setShowSettings(true)}
             />
           )}
@@ -1272,7 +1278,7 @@ function sortColTasks(tasks, col, kbTags) {
   });
 }
 
-function KanbanPage({ tasks, kbCols, kbTags, onNewTask, onEditTask, onDeleteTask, onMoveTask, dragId, onOpenSettings }) {
+function KanbanPage({ tasks, kbCols, kbTags, onNewTask, onEditTask, onDeleteTask, onMoveTask, onToggleComplete, dragId, onOpenSettings }) {
   const tot=tasks.length;
   return (
     <div className="fade">
@@ -1287,7 +1293,7 @@ function KanbanPage({ tasks, kbCols, kbTags, onNewTask, onEditTask, onDeleteTask
         <div className="kb-board" style={{gridTemplateColumns:`repeat(${kbCols.length},280px)`}}>
           {kbCols.map(col=>(
             <KbCol key={col.id} col={col} tasks={sortColTasks(tasks.filter(t=>t.col_id===col.id), col, kbTags)} kbCols={kbCols} kbTags={kbTags}
-              onNewTask={onNewTask} onEditTask={onEditTask} onDeleteTask={onDeleteTask} onMoveTask={onMoveTask} dragId={dragId}/>
+              onNewTask={onNewTask} onEditTask={onEditTask} onDeleteTask={onDeleteTask} onMoveTask={onMoveTask} onToggleComplete={onToggleComplete} dragId={dragId}/>
           ))}
         </div>
       </div>
@@ -1295,7 +1301,7 @@ function KanbanPage({ tasks, kbCols, kbTags, onNewTask, onEditTask, onDeleteTask
   );
 }
 
-function KbCol({ col, tasks, kbCols, kbTags, onNewTask, onEditTask, onDeleteTask, onMoveTask, dragId }) {
+function KbCol({ col, tasks, kbCols, kbTags, onNewTask, onEditTask, onDeleteTask, onMoveTask, onToggleComplete, dragId }) {
   const [over,     setOver]     = useState(false);
   const [dropIdx,  setDropIdx]  = useState(null);
   const cardsRef = useRef(null);
@@ -1335,7 +1341,7 @@ function KbCol({ col, tasks, kbCols, kbTags, onNewTask, onEditTask, onDeleteTask
           <div key={t.id}>
             {over && dropIdx === i && <div className="kb-drop-indicator"/>}
             <TaskCard task={t} kbCols={kbCols} kbTags={kbTags}
-              onEdit={onEditTask} onDelete={onDeleteTask} onMove={onMoveTask} dragId={dragId}/>
+              onEdit={onEditTask} onDelete={onDeleteTask} onMove={onMoveTask} onToggleComplete={onToggleComplete} dragId={dragId}/>
           </div>
         ))}
         {over && dropIdx === tasks.length && <div className="kb-drop-indicator"/>}
@@ -1345,41 +1351,39 @@ function KbCol({ col, tasks, kbCols, kbTags, onNewTask, onEditTask, onDeleteTask
   );
 }
 
-function TaskCard({ task, kbCols, kbTags, onEdit, onDelete, onMove, dragId }) {
+function TaskCard({ task, kbCols, kbTags, onEdit, onDelete, onMove, onToggleComplete, dragId }) {
   const [dragging, setDragging] = useState(false);
   const pressTimer = useRef(null);
   const isDraggable = useRef(false);
 
-  // Long press to enable drag, click to edit
   const onPointerDown = e => {
     if (e.button !== undefined && e.button !== 0) return;
     isDraggable.current = false;
-    pressTimer.current = setTimeout(() => {
-      isDraggable.current = true;
-    }, 100);
+    pressTimer.current = setTimeout(() => { isDraggable.current = true; }, 100);
   };
-
-  const onPointerUp = e => {
-    clearTimeout(pressTimer.current);
-  };
-
-  const handleClick = e => {
-    if (!isDraggable.current) onEdit(task.id);
-  };
+  const onPointerUp = () => clearTimeout(pressTimer.current);
+  const handleClick = () => { if (!isDraggable.current) onEdit(task.id); };
 
   return (
-    <div className={`tc${dragging?' dragging':''}`}
+    <div className={`tc${dragging?' dragging':''}${task.completed?' tc-completed':''}`}
       draggable
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onClick={handleClick}
       onDragStart={e=>{
         if (!isDraggable.current) { e.preventDefault(); return; }
-        e.dataTransfer.setData('tid',task.id);
-        setDragging(true); dragId.current=task.id;
+        e.dataTransfer.setData('tid', task.id);
+        setDragging(true); dragId.current = task.id;
       }}
-      onDragEnd={()=>{setDragging(false);dragId.current=null;isDraggable.current=false;}}>
-      <div className="tc-title">{task.title}</div>
+      onDragEnd={()=>{setDragging(false); dragId.current=null; isDraggable.current=false;}}>
+
+      {/* Check button — visible on hover */}
+      <button className="tc-check-btn" title={task.completed?'Desmarcar':'Marcar como concluída'}
+        onClick={e=>{e.stopPropagation(); onToggleComplete(task.id);}}>
+        {task.completed ? '✓' : ''}
+      </button>
+
+      <div className={`tc-title${task.completed?' tc-title-done':''}`}>{task.title}</div>
       {task.tags?.length>0 && (
         <div className="tc-tags">
           {task.tags.map(tid=>{const t=kbTags.find(x=>x.id===tid);return t?<div key={tid} className="tc-tag" style={{background:t.color+'18',color:t.color}}>{t.label}</div>:null;})}
@@ -1391,7 +1395,6 @@ function TaskCard({ task, kbCols, kbTags, onEdit, onDelete, onMove, dragId }) {
           {reminderPast(task.reminder)?'⏰':'🔔'} {new Date(task.reminder).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'})}
         </div>
       )}
-      {/* Delete button only */}
       <div className="tc-foot">
         <div className="tc-actions">
           <button className="tc-btn danger" title="Excluir" onClick={e=>{e.stopPropagation();if(window.confirm('Excluir tarefa?'))onDelete(task.id);}}>✕</button>
