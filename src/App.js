@@ -1021,9 +1021,133 @@ function HabWeek({ habits, logs, td, onToggle }) {
 // ─────────────────────────────────────────────────────
 function HabStats({ habits, logs, td }) {
   const l7=lastN(7), l28=lastN(28);
+  const [period, setPeriod] = useState('week'); // 'week' | 'month' | 'year' | 'alltime'
+
   if (!habits.length) return <div className="empty"><div className="empty-ico">◈</div><div className="empty-h">Sem dados ainda</div><div className="empty-s">Adicione hábitos para ver stats</div></div>;
+
+  // ── Build chart data based on period ──
+  const buildChartData = () => {
+    const today = new Date();
+    if (period === 'week') {
+      // Last 7 days
+      return lastN(7).map(dk => {
+        const [y,m,d] = dk.split('-');
+        return { label: `${d}/${m}`, value: (logs[dk]||[]).length, key: dk };
+      });
+    }
+    if (period === 'month') {
+      // Last 4 weeks (grouped)
+      const weeks = [];
+      for (let w = 3; w >= 0; w--) {
+        const days = Array.from({length:7},(_,i) => {
+          const dt = new Date(today);
+          dt.setDate(dt.getDate() - (w*7 + (6-i)));
+          return toK(dt);
+        });
+        const total = days.reduce((s,dk) => s + (logs[dk]||[]).length, 0);
+        const lastDay = days[days.length-1];
+        const [,m,d] = lastDay.split('-');
+        weeks.push({ label: `${d}/${m}`, value: total, key: lastDay });
+      }
+      return weeks;
+    }
+    if (period === 'year') {
+      // Last 12 months
+      const months = [];
+      for (let mo = 11; mo >= 0; mo--) {
+        const dt = new Date(today.getFullYear(), today.getMonth()-mo, 1);
+        const y = dt.getFullYear(), m = dt.getMonth();
+        const daysInM = new Date(y, m+1, 0).getDate();
+        let total = 0;
+        for (let d=1; d<=daysInM; d++) {
+          const dk = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          if (new Date(dk) > today) break;
+          total += (logs[dk]||[]).length;
+        }
+        months.push({ label: MO[m], value: total, key: `${y}-${m}` });
+      }
+      return months;
+    }
+    // alltime — by year
+    const allDates = Object.keys(logs).filter(dk => logs[dk]?.length > 0);
+    if (allDates.length === 0) return [{label: String(today.getFullYear()), value: 0, key: 'y'}];
+    const years = [...new Set(allDates.map(dk => dk.split('-')[0]))].sort();
+    return years.map(y => {
+      const total = allDates.filter(dk => dk.startsWith(y)).reduce((s,dk) => s + (logs[dk]||[]).length, 0);
+      return { label: y, value: total, key: y };
+    });
+  };
+
+  const chartData = buildChartData();
+  const maxVal = Math.max(...chartData.map(d=>d.value), habits.length, 1);
+  const chartW = 640, chartH = 160, padL = 32, padB = 24, padT = 12, padR = 12;
+  const plotW = chartW - padL - padR, plotH = chartH - padT - padB;
+  const stepX = chartData.length > 1 ? plotW / (chartData.length - 1) : 0;
+
+  const points = chartData.map((d,i) => ({
+    x: padL + i * stepX,
+    y: padT + plotH - (d.value / maxVal) * plotH,
+    ...d
+  }));
+
+  const linePath = points.map((p,i) => i===0 ? `M${p.x},${p.y}` : `L${p.x},${p.y}`).join(' ');
+  const areaPath = `${linePath} L${points[points.length-1]?.x||padL},${padT+plotH} L${points[0]?.x||padL},${padT+plotH} Z`;
+
+  const [hoverIdx, setHoverIdx] = useState(null);
+
   return (
     <div>
+      {/* ── LINE CHART ── */}
+      <div className="chart-box fade">
+        <div className="chart-header">
+          <div className="heat-ttl">DESEMPENHO — HÁBITOS CONCLUÍDOS</div>
+          <div className="chart-period-tabs">
+            {[{id:'week',l:'Semana'},{id:'month',l:'Mês'},{id:'year',l:'Ano'},{id:'alltime',l:'Tudo'}].map(p=>(
+              <button key={p.id} className={`chart-period-tab${period===p.id?' active':''}`} onClick={()=>setPeriod(p.id)}>{p.l}</button>
+            ))}
+          </div>
+        </div>
+        <svg viewBox={`0 0 ${chartW} ${chartH}`} className="chart-svg" preserveAspectRatio="none">
+          {/* Y-axis gridlines */}
+          {[0, 0.5, 1].map(f => (
+            <line key={f} x1={padL} y1={padT+plotH*(1-f)} x2={chartW-padR} y2={padT+plotH*(1-f)}
+              stroke="var(--b1)" strokeWidth="1"/>
+          ))}
+          {/* Area fill */}
+          <defs>
+            <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--acc)" stopOpacity="0.25"/>
+              <stop offset="100%" stopColor="var(--acc)" stopOpacity="0"/>
+            </linearGradient>
+          </defs>
+          <path d={areaPath} fill="url(#chartGrad)"/>
+          {/* Line */}
+          <path d={linePath} fill="none" stroke="var(--acc)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          {/* Points */}
+          {points.map((p,i) => (
+            <g key={i}
+              onMouseEnter={()=>setHoverIdx(i)} onMouseLeave={()=>setHoverIdx(null)}
+              style={{cursor:'pointer'}}>
+              <circle cx={p.x} cy={p.y} r={hoverIdx===i?6:4} fill="var(--bg1)" stroke="var(--acc)" strokeWidth="2.5"/>
+              <circle cx={p.x} cy={p.y} r="14" fill="transparent"/>
+              {/* X labels */}
+              {(chartData.length <= 12 || i % Math.ceil(chartData.length/12) === 0) && (
+                <text x={p.x} y={chartH-6} textAnchor="middle" fontSize="9" fill="var(--t3)" fontFamily="var(--fm)">{p.label}</text>
+              )}
+            </g>
+          ))}
+          {/* Hover tooltip */}
+          {hoverIdx !== null && (
+            <g>
+              <line x1={points[hoverIdx].x} y1={padT} x2={points[hoverIdx].x} y2={padT+plotH} stroke="var(--acc)" strokeWidth="1" strokeDasharray="3,3" opacity="0.5"/>
+              <rect x={points[hoverIdx].x-22} y={points[hoverIdx].y-28} width="44" height="20" rx="4" fill="var(--bg3)" stroke="var(--acc)" strokeWidth="1"/>
+              <text x={points[hoverIdx].x} y={points[hoverIdx].y-14} textAnchor="middle" fontSize="11" fontWeight="700" fill="var(--acc)">{points[hoverIdx].value}</text>
+            </g>
+          )}
+        </svg>
+        <div className="chart-yaxis-label">Máx: {habits.length} hábitos/dia</div>
+      </div>
+
       <div className="heat-box fade">
         <div className="heat-ttl">ATIVIDADE — 28 DIAS</div>
         <div className="heat-grid">
