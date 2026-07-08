@@ -21,7 +21,7 @@ const ALL_ICONS = ICON_CATEGORIES.flatMap(c => c.icons);
 const HICONS = ALL_ICONS; // backward compat
 const HCOLS  = ['#00E5A0','#4488FF','#FF4466','#FFB800','#AA66FF','#FF8844','#44DDFF','#FF44AA','#88FF44','#FFAA00','#44AAFF','#FF6644','#66FF88','#AA44FF','#FFD044'];
 const PALETTE = ['#00E5A0','#4488FF','#FF4466','#FFB800','#AA66FF','#FF8844','#44DDFF','#FF44BB','#66FF44','#FF6644','#44BBFF','#FFD044','#FF4488','#88FF66','#44FFCC'];
-const DEFAULT_COLS = [{label:'Backlog',color:'#44445A',position:0},{label:'A Fazer',color:'#4488FF',position:1},{label:'Em Progresso',color:'#FFB800',position:2},{label:'Concluído',color:'#00E5A0',position:3}];
+const DEFAULT_COLS = [{label:'Backlog',color:'#44445A',type:'inbox',position:0},{label:'A Fazer',color:'#4488FF',type:'transition',position:1},{label:'Em Progresso',color:'#FFB800',type:'transition',position:2},{label:'Concluído',color:'#00E5A0',type:'done',position:3}];
 const DEFAULT_TAGS = [{label:'Design',color:'#4488FF'},{label:'Dev',color:'#AA66FF'},{label:'Produto',color:'#00E5A0'},{label:'Pessoal',color:'#FF8844'},{label:'Financeiro',color:'#FFB800'},{label:'Saúde',color:'#FF4466'}];
 
 // ─────────────────────────────────────────────────────
@@ -369,6 +369,15 @@ function FlowApp({ session }) {
     await supabase.from('tasks').delete().eq('id', id);
   }, []);
 
+  const quickAddTask = useCallback(async (colId, title) => {
+    if (!title.trim() || !colId) return;
+    const pos = tasks.filter(t => t.col_id === colId).length;
+    const { data } = await supabase.from('tasks')
+      .insert({ title: title.trim(), col_id: colId, user_id: uid, position: pos, tags: [], description: '' })
+      .select().single();
+    if (data) setTasks(prev => [...prev, data]);
+  }, [tasks, uid]);
+
   const moveTask = useCallback(async (id, colId, dropPos) => {
     setTasks(prev => {
       const task = prev.find(t => t.id === id);
@@ -391,10 +400,23 @@ function FlowApp({ session }) {
   const addCol = useCallback(async () => {
     if (!newColName.trim()) return;
     const pos = kbCols.length;
-    const { data } = await supabase.from('kb_cols').insert({ user_id: uid, label: newColName.trim(), color: newColColor, position: pos }).select().single();
+    const { data } = await supabase.from('kb_cols').insert({ user_id: uid, label: newColName.trim(), color: newColColor, type: 'transition', position: pos }).select().single();
     if (data) setKbCols(prev => [...prev, data]);
     setNewColName(''); setNewColColor('#4488FF');
   }, [newColName, newColColor, kbCols, uid]);
+
+  const updateCol = useCallback(async (id, patch) => {
+    // Enforce single inbox rule
+    if (patch.type === 'inbox') {
+      const existing = kbCols.find(c => c.type === 'inbox' && c.id !== id);
+      if (existing) {
+        setKbCols(prev => prev.map(c => c.id === existing.id ? {...c, type:'transition'} : c));
+        await supabase.from('kb_cols').update({ type: 'transition' }).eq('id', existing.id);
+      }
+    }
+    setKbCols(prev => prev.map(c => c.id === id ? {...c, ...patch} : c));
+    await supabase.from('kb_cols').update(patch).eq('id', id);
+  }, [kbCols]);
 
   const deleteCol = useCallback(async id => {
     if (kbCols.length <= 1) { alert('É necessário ao menos uma coluna.'); return; }
@@ -404,26 +426,18 @@ function FlowApp({ session }) {
     setTasks(prev => prev.map(t => t.col_id === id ? {...t, col_id: fallback} : t));
     await supabase.from('kb_cols').delete().eq('id', id);
     if (fallback) await supabase.from('tasks').update({ col_id: fallback }).eq('col_id', id).eq('user_id', uid);
-    // Renumber remaining positions
     for (let i = 0; i < newCols.length; i++) {
       await supabase.from('kb_cols').update({ position: i }).eq('id', newCols[i].id);
     }
   }, [kbCols, uid]);
-
-  const updateCol = useCallback(async (id, patch) => {
-    setKbCols(prev => prev.map(c => c.id === id ? {...c, ...patch} : c));
-    await supabase.from('kb_cols').update(patch).eq('id', id);
-  }, []);
 
   const reorderCol = useCallback(async (id, dir) => {
     const cols = [...kbCols];
     const idx = cols.findIndex(c => c.id === id);
     const target = idx + dir;
     if (target < 0 || target >= cols.length) return;
-    // Swap in local state immediately
     [cols[idx], cols[target]] = [cols[target], cols[idx]];
     setKbCols(cols);
-    // Save each new position to Supabase sequentially
     for (let i = 0; i < cols.length; i++) {
       await supabase.from('kb_cols').update({ position: i }).eq('id', cols[i].id);
     }
@@ -740,7 +754,7 @@ function FlowApp({ session }) {
               habits={habits} logs={logs} tasks={tasks} kbCols={kbCols}
               entries={entries} routines={routines} rBlocks={rBlocks} rLogs={rLogs}
               fSheets={fSheets} fEntries={fEntries} calEvents={calEvents}
-              onNavigate={setPage}
+              onNavigate={setPage} onAddTask={quickAddTask}
               userName={session.user.email?.split('@')[0]}
             />
           )}
@@ -1397,13 +1411,32 @@ function SettingsModal({ kbCols, kbTags, onAddCol, onDeleteCol, onUpdateCol, onR
         <div className="settings-section">
           <div className="settings-section-title">COLUNAS</div>
           {kbCols.map((col, idx)=>(
-            <div key={col.id} className="set-item">
-              <div style={{display:'flex',flexDirection:'column',gap:2,flexShrink:0}}>
-                <button className="reorder-btn" onClick={()=>onReorderCol(col.id,-1)} disabled={idx===0} title="Mover para cima">▲</button>
-                <button className="reorder-btn" onClick={()=>onReorderCol(col.id,1)} disabled={idx===kbCols.length-1} title="Mover para baixo">▼</button>
+            <div key={col.id} className="set-item-wrap">
+              <div className="set-item">
+                <div style={{display:'flex',flexDirection:'column',gap:2,flexShrink:0}}>
+                  <button className="reorder-btn" onClick={()=>onReorderCol(col.id,-1)} disabled={idx===0} title="Mover para cima">▲</button>
+                  <button className="reorder-btn" onClick={()=>onReorderCol(col.id,1)} disabled={idx===kbCols.length-1} title="Mover para baixo">▼</button>
+                </div>
+                <input className="set-item-input" value={col.label} onChange={e=>onUpdateCol(col.id,{label:e.target.value})}/>
+                <button className="set-del" onClick={()=>{if(kbCols.length<=1){alert('Mínimo 1 coluna.');return;}if(window.confirm(`Excluir "${col.label}"?`))onDeleteCol(col.id);}}>✕</button>
               </div>
-              <input className="set-item-input" value={col.label} onChange={e=>onUpdateCol(col.id,{label:e.target.value})}/>
-              <button className="set-del" onClick={()=>{if(kbCols.length<=1){alert('Mínimo 1 coluna.');return;}if(window.confirm(`Excluir "${col.label}"?`))onDeleteCol(col.id);}}>✕</button>
+              {/* Column type selector */}
+              <div className="col-type-row">
+                {[{id:'inbox',l:'📥 Inbox',desc:'Entrada rápida'},{id:'transition',l:'🔄 Transição',desc:'Em andamento'},{id:'done',l:'✅ Fechamento',desc:'Concluído'}].map(t=>(
+                  <button key={t.id}
+                    className={`col-type-btn${(col.type||'transition')===t.id?' active':''}`}
+                    title={t.desc}
+                    onClick={()=>{
+                      if(t.id==='inbox' && col.type!=='inbox'){
+                        const hasInbox = kbCols.some(c=>c.type==='inbox'&&c.id!==col.id);
+                        if(hasInbox && !window.confirm('Já existe uma coluna Inbox. Trocar?')) return;
+                      }
+                      onUpdateCol(col.id,{type:t.id});
+                    }}>
+                    {t.l}
+                  </button>
+                ))}
+              </div>
             </div>
           ))}
           <div style={{display:'flex',gap:8,marginTop:4,alignItems:'center'}}>
@@ -2520,7 +2553,7 @@ function FinancePage({ sheets, entries, onAddSheet, onUpdateSheet, onDeleteSheet
 // ─────────────────────────────────────────────────────
 // HOME PAGE — Dashboard
 // ─────────────────────────────────────────────────────
-function HomePage({ habits, logs, tasks, kbCols, entries, routines, rBlocks, rLogs, fSheets, fEntries, calEvents, onNavigate, userName }) {
+function HomePage({ habits, logs, tasks, kbCols, entries, routines, rBlocks, rLogs, fSheets, fEntries, calEvents, onNavigate, onAddTask, userName }) {
   const td = todayKey();
   const d  = new Date();
   const todayDow = d.getDay();
@@ -2531,7 +2564,19 @@ function HomePage({ habits, logs, tasks, kbCols, entries, routines, rBlocks, rLo
   const l7         = lastN(7);
   const perfectDays= l7.filter(day => habits.length > 0 && (logs[day]||[]).length === habits.length).length;
 
-  // ── Calendar stats ──
+  // ── Inbox quick add ──
+  const inboxCol = kbCols.find(c => c.type === 'inbox');
+  const [inboxText, setInboxText] = useState('');
+  const [inboxSaving, setInboxSaving] = useState(false);
+
+  const submitInbox = async (e) => {
+    if (e.key && e.key !== 'Enter') return;
+    if (!inboxText.trim() || !inboxCol) return;
+    setInboxSaving(true);
+    await onAddTask(inboxCol.id, inboxText.trim());
+    setInboxText('');
+    setInboxSaving(false);
+  };
   const now = new Date();
   const todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
   const nextWeek = new Date(now.getTime() + 7*24*60*60*1000);
@@ -2671,6 +2716,25 @@ function HomePage({ habits, logs, tasks, kbCols, entries, routines, rBlocks, rLo
               );
             })}
           </div>
+          {/* Inbox quick add */}
+          {inboxCol && (
+            <div className="home-inbox-wrap" onClick={e=>e.stopPropagation()}>
+              <div className="home-inbox-label">📥 {inboxCol.label}</div>
+              <div className="home-inbox-row">
+                <input
+                  className="home-inbox-input"
+                  placeholder="Nova tarefa rápida... (Enter)"
+                  value={inboxText}
+                  onChange={e=>setInboxText(e.target.value)}
+                  onKeyDown={submitInbox}
+                  disabled={inboxSaving}
+                />
+                <button className="home-inbox-btn" onClick={()=>submitInbox({})} disabled={inboxSaving||!inboxText.trim()}>
+                  {inboxSaving ? '...' : '↵'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ─ Diário ─ */}
